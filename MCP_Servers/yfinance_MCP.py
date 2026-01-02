@@ -273,6 +273,25 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["query"]
             }
+        ),
+        Tool(
+            name="get_news",
+            description="Get the latest news articles for a given stock symbol",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "Stock symbol (e.g., AAPL, MSFT, GOOG)"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of news items to return",
+                        "default": 10
+                    }
+                },
+                "required": ["symbol"]
+            }
         )
     ]
 
@@ -420,6 +439,61 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent | ImageCo
             return [TextContent(
                 type="text",
                 text=json.dumps(results, indent=2)
+            )]
+
+        elif name == "get_news":
+            symbol = arguments["symbol"]
+            limit_raw = arguments.get("limit", 10)
+            try:
+                limit = max(0, int(limit_raw))
+            except Exception:
+                limit = 10
+
+            stock = yf.Ticker(symbol)
+            news_items = getattr(stock, "news", None) or []
+
+            if not news_items:
+                return [TextContent(
+                    type="text",
+                    text=f"No news available for {symbol}"
+                )]
+
+            # Normalize output (yfinance returns a list of dicts; newer versions nest fields in `item["content"]`).
+            normalized: list[dict[str, Any]] = []
+            for item in news_items[:limit]:
+                if not isinstance(item, dict):
+                    continue
+
+                data: dict[str, Any] = item
+                if isinstance(item.get("content"), dict):
+                    data = item["content"]
+
+                provider = data.get("provider") if isinstance(data.get("provider"), dict) else {}
+                click = data.get("clickThroughUrl") if isinstance(data.get("clickThroughUrl"), dict) else {}
+                canonical = data.get("canonicalUrl") if isinstance(data.get("canonicalUrl"), dict) else {}
+
+                normalized_item = {
+                    "title": data.get("title"),
+                    "publisher": provider.get("displayName") or data.get("publisher"),
+                    "link": click.get("url") or canonical.get("url") or data.get("link"),
+                    "published": data.get("pubDate") or data.get("providerPublishTime") or data.get("displayTime"),
+                    "type": data.get("contentType") or data.get("type"),
+                    "relatedTickers": data.get("relatedTickers") or item.get("relatedTickers"),
+                }
+
+                # Skip completely empty rows
+                if any(v is not None for v in normalized_item.values()):
+                    normalized.append(normalized_item)
+
+            if not normalized:
+                return [TextContent(
+                    type="text",
+                    text=f"No news available for {symbol}"
+                )]
+
+            return [TextContent(
+                type="text",
+                text=json.dumps(normalized, indent=2)
             )]
         
         else:

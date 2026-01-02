@@ -1,0 +1,9 @@
+langchain
+langchain-openai
+pydantic>=1.10.0
+requests>=2.25.0
+rich
+langchain_mcp_adapters
+fastmcp
+yfinance
+langchain-ollama
