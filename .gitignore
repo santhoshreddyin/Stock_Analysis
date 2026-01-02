@@ -1,3 +1,3 @@
 .venv/*
-MCP_Servers/__pycache__/*
-Agents/Stocks.py
+AgentMemory/*
+*.pyc

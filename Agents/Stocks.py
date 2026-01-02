@@ -9,12 +9,6 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
 import sys
 
-# Try loading .env if available (optional dependency).
-try:
-    from dotenv import load_dotenv  # type: ignore
-    load_dotenv()
-except Exception:
-    pass
 
 client = MultiServerMCPClient(  
     {

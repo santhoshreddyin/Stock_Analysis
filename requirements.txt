@@ -7,3 +7,6 @@ langchain_mcp_adapters
 fastmcp
 yfinance
 langchain-ollama
+tkinter
+deepagents 
+tavily-python
