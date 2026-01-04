@@ -4,22 +4,19 @@ import argparse
 import asyncio
 from rich import print
 from typing import Literal
+from HelperFunctions import _require_env
 
 from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from deepagents import create_deep_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
-
+from langfuse.langchain import CallbackHandler
+langfuse_handler = CallbackHandler()
 import httpx
 import anyio
 
 # Helper Functions
-def _require_env(name: str) -> str:
-    val = os.getenv(name)
-    if not val:
-        raise RuntimeError(f"Missing environment variable: {name}")
-    return val
-
 def _int_env(name: str, default: int) -> int:
     try:
         return int(os.getenv(name, "").strip() or default)
@@ -50,7 +47,7 @@ async def _ainvoke_with_retries(agent, payload: dict):
     last: Exception | None = None
     for i in range(1, attempts + 1):
         try:
-            return await agent.ainvoke(payload)
+            return await agent.ainvoke(payload,config={"callbacks":[langfuse_handler]})
         except Exception as e:
             last = e
             if i >= attempts or not _is_retryable(e):
@@ -114,14 +111,14 @@ async def main(args: argparse.Namespace) -> None:
     api_key = _require_env("OPENAI_API_KEY")
 
     model = ChatOpenAI(
-        model=os.getenv("OPENAI_MODEL", "gpt-5"),
+        model="gpt-5-mini", #os.getenv("OPENAI_MODEL", "gpt-5"),
         temperature=0.1,
         max_tokens=_int_env("OPENAI_MAX_TOKENS", 6000),   # was 50000
         timeout=_float_env("OPENAI_TIMEOUT", 600.0),      # was 120
         max_retries=_int_env("OPENAI_MAX_RETRIES", 2),
         api_key=api_key,
     )
-
+    
     try:
         async with (await _open_yfinance_session()) as session:
             tools = await load_mcp_tools(session)
@@ -129,31 +126,48 @@ async def main(args: argparse.Namespace) -> None:
             subagents = [
             {
                 "name": "Technical_Analyst",
+                "model": model,
                 "description": "Provides the Technical Analysis of stocks",
                 "system_prompt": "Analyze data and extract key insights such as Support and Resistance levels, Moving Averages, Share holding Patterns, PE Ratios, Insider trading and other technical indicators.",
                 "tools": tools,
             },
             {
+                "model": model,
                 "name": "Fundamental_Analyst",
                 "description": "Provides the Fundamental Analysis of stocks",
-                "system_prompt": "Analyze data and extract key insights",
+                "system_prompt": "Analyze the Stock from the fundamental perspective. Look at the Industry Trends, MOAT, Competitors, Financial Health, Management Effectiveness and other fundamental indicators.",
+                "tools": tools,
             },
             {
-                "name": "News_Reporter",
+                "model": model,
+                "name": "News_Analyst",
                 "description": "Gathers latest news and updates on stocks",
-                "system_prompt": "Create professional reports from insights",
+                "system_prompt": "Analyze the Recent Stock News and summarize the important events impacting the stock price.",
                 "tools": [internet_search],
             },
             {
+                "model": model,
                 "name": "User_Notifier",
                 "description": "Writes polished reports from analysis",
-                "system_prompt": "Create professional reports from insights",
+                "system_prompt": """
+                Create professional reports from insights
+                You must write the detailed report in {STOCK_SYMBOL}_Analysis.html file in the Output directory.
+                Start with a concise summary of key points, followed by detailed sections with data visualizations where applicable.
+                Use clear headings, bullet points, and visuals to enhance readability.
+                Ensure the report is well-structured and free of jargon, making it accessible to non-experts.
+                """,
             },
             ]
 
             from deepagents.backends import FilesystemBackend
-            research_instructions = """You are an expert researcher. Your job is to conduct thorough research, and then write a polished report.
-    Keep the final answer concise and well-structured unless the user asks for exhaustive detail.
+            research_instructions = """You are an Stock Analyst. Your job is to Analyse stocks and provide detailed insights.
+            You must write the key observayions in {STOCK_SYMBOL}_Analysis.txt file in the AgentMemory directory so as to no repeat the full research next time.
+            if the file does not exist, perform full analysis to create it.
+            You must to use subagents to get the required information.
+            When the last analysis is one week old or more, you should avoid Fundamental & Technical Analysis.
+            When sending the report, Refer to the file and provide the incremental insights only.
+            Do not ask for any additional information from the user. Take full responsibility for the analysis and report generation.
+            You must use the User_Notifier subagent to write the final report.
     """
 
             agent = create_deep_agent(
@@ -181,7 +195,7 @@ if __name__ == "__main__":
     #parser.add_argument("--api-key", dest="api_key", default=None, help="OpenAI API key (overrides OPENAI_API_KEY env var)")
     parser.add_argument(
         "--prompt",
-        default="Analyse IONQ stock",
+        default="Analyse RGTI stocks",
         help="User prompt to send to the agent",
     )
     asyncio.run(main(parser.parse_args()))
