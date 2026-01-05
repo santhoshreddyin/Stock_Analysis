@@ -114,6 +114,7 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="get_stock_metric",
             description="""Get a specific metric for a stock using yfinance field names.
+            Tip: set metric to "All" to return the full metrics payload (all fields from yfinance `info`).
             Common requests and their exact field names:
             
             Stock Price & Trading Info:
@@ -228,7 +229,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "metric": {
                         "type": "string",
-                        "description": "The metric to retrieve, use camelCase"
+                        "description": 'The metric to retrieve, use camelCase. Use "All" to return everything.'
                     }
                 },
                 "required": ["symbol", "metric"]
@@ -295,11 +296,15 @@ async def list_tools() -> list[Tool]:
         )
     ]
 
+def safe_json_dumps(obj: Any, **kwargs: Any) -> str:
+    """json.dumps that won't fail on non-serializable yfinance values."""
+    return json.dumps(obj, default=str, **kwargs)
+
 @app.call_tool()
 async def call_tool(name: str, arguments: Any) -> Sequence[TextContent | ImageContent | EmbeddedResource]:
     """Handle tool calls."""
     logger.info(f"Tool called: {name} with arguments: {arguments}")
-    
+
     try:
         if name == "get_stock_price":
             symbol = arguments["symbol"]
@@ -326,29 +331,29 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent | ImageCo
         elif name == "get_stock_metric":
             symbol = arguments["symbol"]
             metric = arguments["metric"]
-            
+
             stock_data = await fetch_stock_info(symbol)
-            
+
+            # Special case: metric=All (or similar) returns full payload
+            metric_norm = metric.strip().lower() if isinstance(metric, str) else ""
+            if metric_norm in {"all", "all metrics", "all_metrics", "*"}:
+                return [TextContent(type="text", text=safe_json_dumps(stock_data, indent=2))]
+
             if metric in stock_data:
                 # Format different metrics appropriately
                 value = stock_data[metric]
                 formatted_value = value
-                
-                # Format percentages
+
                 if metric in ["dividendYield", "profitMargins", "operatingMargins", "grossMargins"]:
                     if value is not None:
                         formatted_value = f"{value * 100:.2f}%"
-                
-                # Format currency values
                 elif metric in ["currentPrice", "open", "dayHigh", "dayLow", "targetMeanPrice"]:
                     if value is not None:
                         formatted_value = f"${value:.2f}"
-                
-                # Format large numbers
                 elif metric in ["marketCap", "totalRevenue", "volume"]:
                     if value is not None:
                         formatted_value = f"{value:,}"
-                
+
                 return [TextContent(
                     type="text",
                     text=f"{symbol} {metric}: {formatted_value}"
