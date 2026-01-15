@@ -10,3 +10,5 @@ langchain-ollama
 tkinter
 deepagents 
 tavily-python
+openpyxl
+finnhub-python
