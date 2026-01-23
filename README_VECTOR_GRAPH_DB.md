@@ -83,6 +83,11 @@ The database initialization script creates all necessary tables and enables the 
 python init_news_graph_db.py
 ```
 
+**Note**: Enabling the pgvector extension requires database superuser privileges. If you encounter permission errors:
+1. Ask your database administrator to run: `CREATE EXTENSION IF NOT EXISTS vector;`
+2. Or ensure your database user has the necessary privileges
+3. Or manually enable it using psql: `psql -U postgres -d your_database -c "CREATE EXTENSION IF NOT EXISTS vector;"`
+
 This will:
 - Enable the pgvector extension in PostgreSQL
 - Create all news and graph database tables

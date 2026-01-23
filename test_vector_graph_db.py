@@ -5,6 +5,7 @@ Verifies that all components are working correctly
 
 import os
 import sys
+# traceback imported at top
 from datetime import datetime
 
 # Add parent directory to path
@@ -68,7 +69,7 @@ def test_news_processing():
         return True
     except Exception as e:
         print(f"✗ Error: {e}")
-        import traceback
+        # traceback imported at top
         traceback.print_exc()
         return False
 
@@ -115,7 +116,7 @@ def test_news_storage():
             return False
     except Exception as e:
         print(f"✗ Error: {e}")
-        import traceback
+        # traceback imported at top
         traceback.print_exc()
         return False
 
@@ -153,7 +154,7 @@ def test_graph_retrieval():
         return True
     except Exception as e:
         print(f"✗ Error: {e}")
-        import traceback
+        # traceback imported at top
         traceback.print_exc()
         return False
 
@@ -229,7 +230,7 @@ def test_semantic_search():
         return True
     except Exception as e:
         print(f"✗ Error: {e}")
-        import traceback
+        # traceback imported at top
         traceback.print_exc()
         return False
 

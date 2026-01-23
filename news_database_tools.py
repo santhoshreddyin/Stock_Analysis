@@ -54,7 +54,7 @@ def save_news_to_database(
         if published_date:
             try:
                 pub_date = datetime.fromisoformat(published_date.replace('Z', '+00:00'))
-            except:
+            except (ValueError, AttributeError):
                 pub_date = datetime.utcnow()
         else:
             pub_date = datetime.utcnow()
