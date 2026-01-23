@@ -59,6 +59,7 @@ def get_stock_price(symbol: str) -> float:
     """Returns the Stock Current Price, Currency, and Target Prices, 52 Week High/Low, Stock Recommendation & Prev Close in Json Format."""
     info = get_stock_info_payload(symbol)
     data = {
+           "Name":info.get("shortName") or info.get("longName"),
            "Current Price": info.get("currentPrice"),
             "Currency": info.get("financialCurrency"),
             "Target High": info.get("targetHighPrice"),

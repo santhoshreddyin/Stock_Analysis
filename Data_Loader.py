@@ -86,6 +86,25 @@ class PostgreSQLConnection:
         self.engine = None
         self.SessionLocal = None
     
+    @classmethod
+    def create_connection(cls):
+        """
+        Create a PostgreSQL connection using environment variables
+        
+        Returns:
+            PostgreSQLConnection: Initialized and connected database instance
+        """
+        db = cls(
+            host=os.getenv("DB_HOST", "localhost"),
+            port=int(os.getenv("DB_PORT", "5432")),
+            database=os.getenv("DB_NAME", "postgres"),
+            user=os.getenv("DB_USER", "postgres"),
+            password=os.getenv("DB_PASSWORD", "postgres")
+        )
+        db.connect()
+        db.create_tables()
+        return db
+    
     def connect(self) -> bool:
         """
         Establish connection to PostgreSQL database
@@ -178,27 +197,77 @@ class PostgreSQLConnection:
         Returns:
             bool: True if successful, False otherwise
         """
+        return self.upsert_stock(symbol, name, frequency, sector, industry, description)
+
+    def upsert_stock(self, symbol: str, name: str, frequency: str = None, sector: str = None, 
+                  industry: str = None, description: str = None) -> bool:
+        """
+        Add or Update a stock in Stock_List table
+        
+        Args:
+            symbol: Stock ticker symbol
+            name: Company name
+            frequency: Data frequency (Daily, Weekly, Monthly)
+            sector: Industry sector
+            industry: Industry type
+            description: Stock description
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
         session = self.get_session()
         if not session:
             return False
         
         try:
-            stock = Stock_List(
-                symbol=symbol,
-                name=name,
-                Frequency=frequency,
-                sector=sector,
-                industry=industry,
-                description=description
-            )
-            session.add(stock)
+            stock = session.query(Stock_List).filter_by(symbol=symbol).first()
+            if stock:
+                # Update existing
+                if name: stock.name = name
+                if frequency: stock.Frequency = frequency
+                if sector: stock.sector = sector
+                if industry: stock.industry = industry
+                if description: stock.description = description
+                print(f"✓ Updated stock details: {symbol}")
+            else:
+                # Insert new
+                stock = Stock_List(
+                    symbol=symbol,
+                    name=name,
+                    Frequency=frequency,
+                    sector=sector,
+                    industry=industry,
+                    description=description
+                )
+                session.add(stock)
+                print(f"✓ Added stock: {symbol}")
+
             session.commit()
-            print(f"✓ Added stock: {symbol}")
             return True
         except Exception as e:
             session.rollback()
-            print(f"✗ Error adding stock {symbol}: {e}")
+            print(f"✗ Error upserting stock {symbol}: {e}")
             return False
+        finally:
+            session.close()
+
+    def get_all_tickers(self) -> list[str]:
+        """
+        Get list of all stock symbols
+        
+        Returns:
+            List of stock symbols
+        """
+        session = self.get_session()
+        if not session:
+            return []
+        
+        try:
+            stocks = session.query(Stock_List.symbol).all()
+            return [stock.symbol for stock in stocks]
+        except Exception as e:
+            print(f"✗ Error fetching tickers: {e}")
+            return []
         finally:
             session.close()
     
@@ -372,14 +441,14 @@ class PostgreSQLConnection:
         finally:
             session.close()
     
-    def get_all_stocks(self) -> Optional[List[Stock_List]]:
+    def get_all_stocks(self, Frequency: str) -> Optional[List[Stock_List]]:
         """Get all stocks from Stock_List table"""
         session = self.get_session()
         if not session:
             return None
         
         try:
-            stocks = session.query(Stock_List).all()
+            stocks = session.query(Stock_List).filter_by(Frequency=Frequency).all()
             return stocks
         except Exception as e:
             print(f"✗ Error fetching stocks: {e}")
