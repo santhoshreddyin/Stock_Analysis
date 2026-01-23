@@ -12,3 +12,5 @@ tavily-python
 openpyxl
 finnhub-python
 sqlalchemy
+playwright
+playwright-stealth
