@@ -4,10 +4,9 @@ Implements RAG (Retrieval-Augmented Generation) and Graph Database capabilities
 """
 
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text, ForeignKey, Index, JSON
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.dialects.postgresql import ARRAY
 from datetime import datetime
-from typing import Optional
 from pgvector.sqlalchemy import Vector
 
 Base = declarative_base()
@@ -38,8 +37,8 @@ class NewsArticle(Base):
     sentiment_score = Column(Float)  # -1 (negative) to 1 (positive)
     relevance_score = Column(Float)  # 0 to 1
     
-    # Metadata
-    metadata = Column(JSON)  # Store additional metadata like tweet metrics, etc.
+    # Metadata (using metadata_ to avoid conflict with SQLAlchemy's reserved attribute)
+    metadata_ = Column('metadata', JSON)  # Store additional metadata like tweet metrics, etc.
     
     # Indexes for efficient querying
     __table_args__ = (

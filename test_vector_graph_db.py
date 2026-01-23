@@ -5,7 +5,7 @@ Verifies that all components are working correctly
 
 import os
 import sys
-# traceback imported at top
+import traceback
 from datetime import datetime
 
 # Add parent directory to path
@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from Data_Loader import PostgreSQLConnection
 from NewsProcessingService import get_news_service
-from NewsGraphModels import NewsArticle, GraphEntity, GraphRelationship, NewsSummary
+from NewsGraphModels import NewsArticle, GraphEntity
 
 
 def test_database_connection():

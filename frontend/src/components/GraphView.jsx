@@ -144,8 +144,6 @@ const GraphView = ({ symbol = null }) => {
             const label = node.name;
             const fontSize = 12 / globalScale;
             ctx.font = `${fontSize}px Sans-Serif`;
-            const textWidth = ctx.measureText(label).width;
-            const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2);
 
             // Draw node circle
             ctx.beginPath();

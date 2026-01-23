@@ -41,6 +41,8 @@ def save_news_to_database(
     Returns:
         str: Success or error message
     """
+    db = None
+    session = None
     try:
         # Create database connection
         db = PostgreSQLConnection.create_connection()
@@ -81,6 +83,8 @@ def save_news_to_database(
             return "❌ Error: Failed to save news article"
             
     except Exception as e:
+        if session:
+            session.rollback()
         return f"❌ Error saving news: {str(e)}"
     finally:
         if session:
@@ -110,6 +114,8 @@ def create_news_summary(
     Returns:
         str: Success or error message
     """
+    db = None
+    session = None
     try:
         from NewsGraphModels import NewsSummary
         

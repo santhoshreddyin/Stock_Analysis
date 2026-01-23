@@ -14,7 +14,7 @@ import os
 # Add parent directory to path to import Data_Loader
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Data_Loader import PostgreSQLConnection, Stock_List, StockPrice, Stock_History
-from NewsGraphModels import NewsArticle, GraphEntity, GraphRelationship, NewsSummary
+from NewsGraphModels import NewsArticle, NewsSummary
 from NewsProcessingService import get_news_service
 from api.models import (
     StockListResponse, StockDetailResponse, KeyParametersResponse, 
@@ -336,7 +336,7 @@ async def get_news_articles(
                 collected_date=article.collected_date,
                 sentiment_score=article.sentiment_score,
                 relevance_score=article.relevance_score,
-                metadata=article.metadata
+                metadata=article.metadata_
             )
             for article in articles
         ]
@@ -378,7 +378,7 @@ async def search_news(request: NewsSearchRequest):
                 collected_date=article.collected_date,
                 sentiment_score=article.sentiment_score,
                 relevance_score=article.relevance_score,
-                metadata=article.metadata
+                metadata=article.metadata_
             )
             for article in articles
         ]

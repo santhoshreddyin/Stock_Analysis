@@ -42,14 +42,14 @@ const NewsSummary = ({ symbol }) => {
   };
 
   const getSentimentColor = (score) => {
-    if (!score) return '#6b7280';
+    if (score == null) return '#6b7280';
     if (score > 0.3) return '#10b981';
     if (score < -0.3) return '#ef4444';
     return '#f59e0b';
   };
 
   const getSentimentLabel = (score) => {
-    if (!score) return 'Neutral';
+    if (score == null) return 'Neutral';
     if (score > 0.3) return 'Positive';
     if (score < -0.3) return 'Negative';
     return 'Neutral';

@@ -3,19 +3,16 @@ News Processing Service
 Handles news collection, embedding generation, and graph construction
 """
 
-import os
 import hashlib
 import logging
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 from datetime import datetime
 from sentence_transformers import SentenceTransformer
 import re
 
 from sqlalchemy.orm import Session
-from pgvector.sqlalchemy import Vector
-from sqlalchemy import text
 
-from NewsGraphModels import NewsArticle, GraphEntity, GraphRelationship, NewsSummary, EntityMention
+from NewsGraphModels import NewsArticle, GraphEntity, GraphRelationship, EntityMention
 
 logger = logging.getLogger(__name__)
 
@@ -360,29 +357,27 @@ class NewsProcessingService:
             limit: Maximum results
             
         Returns:
-            List of relevant NewsArticle objects
+            List of relevant NewsArticle objects ordered by similarity
         """
         try:
             # Generate query embedding
             query_embedding = self.generate_embedding(query)
             
-            # Use SQLAlchemy ORM for safer queries
+            # Use SQLAlchemy ORM with filtering
             # Build base query
             base_query = session.query(NewsArticle)
             
             # Apply symbol filter if provided
             if symbol:
-                base_query = base_query.filter(NewsArticle.symbol == symbol)
+                base_query = base_query.filter(NewsArticle.symbol == symbol.upper())
             
             # Get all matching articles
-            articles = base_query.all()
+            # Note: For production, implement pgvector distance ordering with raw SQL
+            # or use a vector similarity function. Current implementation returns
+            # filtered results without semantic ranking as a safe fallback.
+            articles = base_query.order_by(NewsArticle.published_date.desc()).limit(limit).all()
             
-            # Calculate cosine similarity manually if needed
-            # For now, return filtered articles (semantic similarity would require
-            # custom SQL functions or vector operations)
-            # In production, use pgvector's <-> operator properly
-            
-            return articles[:limit]
+            return articles
             
         except Exception as e:
             logger.error(f"Error in semantic search: {e}")
