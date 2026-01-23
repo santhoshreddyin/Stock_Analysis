@@ -2,6 +2,7 @@ import os
 import sys
 import argparse
 import asyncio
+import logging
 from rich import print
 from typing import Literal
 from HelperFunctions import _require_env
@@ -17,6 +18,8 @@ from deepagents.backends import FilesystemBackend
 langfuse_handler = CallbackHandler()
 import httpx
 import anyio
+
+logger = logging.getLogger(__name__)
 
 # Helper Functions
 def _int_env(name: str, default: int) -> int:
@@ -155,6 +158,8 @@ def read_report_file(file_path: str) -> str:
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 _YFINANCE_MCP_PATH = os.path.join(_PROJECT_ROOT, "MCP_Servers", "yfinance_MCP.py")
+_TWITTER_MCP_PATH = os.path.join(_PROJECT_ROOT, "MCP_Servers", "twitter_MCP.py")
+_PLAYWRIGHT_MCP_PATH = os.path.join(_PROJECT_ROOT, "MCP_Servers", "playwright_MCP.py")
 
 def _mcp_env() -> dict[str, str]:
     env = dict(os.environ)
@@ -169,8 +174,15 @@ client = MultiServerMCPClient(
             "args": [_YFINANCE_MCP_PATH],
             "env": _mcp_env(),
         },
+        "playwright_MCP": {
+            "transport": "stdio",
+            "command": sys.executable,
+            "args": [_PLAYWRIGHT_MCP_PATH],
+            "env": _mcp_env(),
+        },
     }
-)
+
+client = MultiServerMCPClient(_mcp_servers)
 
 async def _open_yfinance_session():
     if not os.path.exists(_YFINANCE_MCP_PATH):
@@ -181,6 +193,29 @@ async def _open_yfinance_session():
         raise RuntimeError(
             "MCP stdio channel broke. The yfinance MCP server likely crashed.\n"
             f"Try running it directly to see the real error:\n  {sys.executable} {_YFINANCE_MCP_PATH}"
+        ) from e
+
+async def _open_twitter_session():
+    if not os.path.exists(_TWITTER_MCP_PATH):
+        raise FileNotFoundError(f"twitter MCP not found at: {_TWITTER_MCP_PATH}")
+    if not os.getenv("TWITTER_BEARER_TOKEN"):
+        logger.warning("TWITTER_BEARER_TOKEN not set, Twitter tools will not be available")
+        return None
+    try:
+        return client.session("twitter_MCP")
+    except anyio.BrokenResourceError as e:
+        raise RuntimeError(
+            "MCP stdio channel broke. The twitter MCP server likely crashed.\n"
+            f"Try running it directly to see the real error:\n  {sys.executable} {_TWITTER_MCP_PATH}"
+async def _open_playwright_session():
+    if not os.path.exists(_PLAYWRIGHT_MCP_PATH):
+        raise FileNotFoundError(f"Playwright MCP not found at: {_PLAYWRIGHT_MCP_PATH}")
+    try:
+        return client.session("playwright_MCP")
+    except anyio.BrokenResourceError as e:
+        raise RuntimeError(
+            "MCP stdio channel broke. The Playwright MCP server likely crashed.\n"
+            f"Try running it directly to see the real error:\n  {sys.executable} {_PLAYWRIGHT_MCP_PATH}"
         ) from e
 
 # Model Initialization
@@ -197,8 +232,23 @@ async def main(args: argparse.Namespace) -> None:
     )
     
     try:
-        async with (await _open_yfinance_session()) as session:
-            tools = await load_mcp_tools(session)
+        # Open yfinance session
+        async with (await _open_yfinance_session()) as yfinance_session:
+            tools = await load_mcp_tools(yfinance_session)
+            
+            # Try to load Twitter tools if available
+            news_analyst_tools = [internet_search]
+            twitter_session_ctx = await _open_twitter_session()
+            
+            if twitter_session_ctx:
+                async with twitter_session_ctx as twitter_session:
+                    twitter_tools = await load_mcp_tools(twitter_session)
+                    news_analyst_tools.extend(twitter_tools)
+                    logger.info(f"Loaded {len(twitter_tools)} Twitter tools for News_Analyst")
+        async with (await _open_yfinance_session()) as yfinance_session, \
+                   (await _open_playwright_session()) as playwright_session:
+            yfinance_tools = await load_mcp_tools(yfinance_session)
+            playwright_tools = await load_mcp_tools(playwright_session)
 
             subagents = [
             {
@@ -206,21 +256,32 @@ async def main(args: argparse.Namespace) -> None:
                 "model": model,
                 "description": "Provides the Technical Analysis of stocks",
                 "system_prompt": "Analyze data and extract key insights such as Support and Resistance levels, Moving Averages, Share holding Patterns, PE Ratios, Insider trading and other technical indicators.",
-                "tools": tools,
+                "tools": yfinance_tools,
             },
             {
                 "model": model,
                 "name": "Fundamental_Analyst",
                 "description": "Provides the Fundamental Analysis of stocks",
                 "system_prompt": "Analyze the Stock from the fundamental perspective. Look at the Industry Trends, MOAT, Competitors, Financial Health, Management Effectiveness and other fundamental indicators.",
-                "tools": tools,
+                "tools": yfinance_tools,
             },
             {
                 "model": model,
                 "name": "News_Analyst",
-                "description": "Gathers latest news and updates on stocks",
-                "system_prompt": "Analyze the Recent Stock News and summarize the important events impacting the stock price.",
-                "tools": [internet_search],
+                "description": "Gathers latest news and updates on stocks using web scraping and search",
+                "system_prompt": """Analyze the Recent Stock News and summarize the important events impacting the stock price.
+                
+                You have access to:
+                - internet_search: For general web search and finding news sources
+                - Playwright tools for deep web scraping:
+                  * scrape_news_article: Extract full article content from news URLs
+                  * scrape_page_content: Scrape content from any web page
+                  * navigate_to_url: Navigate to a URL and get basic info
+                  * extract_links: Extract all links from a page
+                  * take_screenshot: Capture screenshots of web pages
+                
+                Use internet_search to find relevant news sources, then use scrape_news_article or scrape_page_content to extract detailed information from those sources.""",
+                "tools": [internet_search] + playwright_tools,
             },
             {
                 "model": model,
