@@ -2,6 +2,7 @@ import os
 import sys
 import argparse
 import asyncio
+import logging
 from rich import print
 from typing import Literal
 from HelperFunctions import _require_env
@@ -17,6 +18,8 @@ from deepagents.backends import FilesystemBackend
 langfuse_handler = CallbackHandler()
 import httpx
 import anyio
+
+logger = logging.getLogger(__name__)
 
 # Helper Functions
 def _int_env(name: str, default: int) -> int:

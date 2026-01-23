@@ -63,7 +63,7 @@ def _is_genuine_author(user: Dict[str, Any], min_followers: int = 1000, min_acco
         try:
             created_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
             account_age_days = (datetime.now(created_date.tzinfo) - created_date).days
-        except:
+        except (ValueError, TypeError, AttributeError):
             account_age_days = 0
     else:
         account_age_days = 0
@@ -232,12 +232,19 @@ def search_tweets_by_user(
         # Build query options
         max_results = min(max_results, 100)
         
+        # Build exclude list
+        exclude_list = []
+        if exclude_replies:
+            exclude_list.append('replies')
+        if exclude_retweets:
+            exclude_list.append('retweets')
+        
         # Get user's tweets
         response = client.get_users_tweets(
             id=user_id,
             max_results=max_results,
             tweet_fields=['created_at', 'public_metrics', 'entities', 'referenced_tweets'],
-            exclude=['replies'] if exclude_replies else None,
+            exclude=exclude_list if exclude_list else None,
         )
         
         if not response.data:
@@ -246,12 +253,6 @@ def search_tweets_by_user(
         results = []
         for tweet in response.data:
             tweet_data = tweet.data
-            
-            # Check if it's a retweet
-            if exclude_retweets:
-                referenced_tweets = tweet_data.get('referenced_tweets', [])
-                if any(ref.get('type') == 'retweeted' for ref in referenced_tweets):
-                    continue
             
             public_metrics = tweet_data.get('public_metrics', {})
             
