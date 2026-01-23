@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: stock-analysis
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: stock-backend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: backend-config
+              key: DATABASE_URL
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: backend-secret
+              key: OPENAI_API_KEY
+        - name: TAVILY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: backend-secret
+              key: TAVILY_API_KEY
+        - name: GMAIL_SMTP_USER
+          valueFrom:
+            secretKeyRef:
+              name: backend-secret
+              key: GMAIL_SMTP_USER
+        - name: GMAIL_APP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secret
+              key: GMAIL_APP_PASSWORD
+        - name: TWITTER_BEARER_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: backend-secret
+              key: TWITTER_BEARER_TOKEN
+        - name: OPENAI_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: backend-config
+              key: OPENAI_MODEL
+        - name: OPENAI_MAX_TOKENS
+          valueFrom:
+            configMapKeyRef:
+              name: backend-config
+              key: OPENAI_MAX_TOKENS
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: stock-analysis
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+  selector:
+    app: backend
