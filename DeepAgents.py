@@ -155,22 +155,33 @@ def read_report_file(file_path: str) -> str:
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 _YFINANCE_MCP_PATH = os.path.join(_PROJECT_ROOT, "MCP_Servers", "yfinance_MCP.py")
+_TWITTER_MCP_PATH = os.path.join(_PROJECT_ROOT, "MCP_Servers", "twitter_MCP.py")
 
 def _mcp_env() -> dict[str, str]:
     env = dict(os.environ)
     env.setdefault("PYTHONUNBUFFERED", "1")
     return env
 
-client = MultiServerMCPClient(
-    {
-        "yfinance_MCP": {
-            "transport": "stdio",
-            "command": sys.executable,
-            "args": [_YFINANCE_MCP_PATH],
-            "env": _mcp_env(),
-        },
+# Configure MCP client servers
+_mcp_servers = {
+    "yfinance_MCP": {
+        "transport": "stdio",
+        "command": sys.executable,
+        "args": [_YFINANCE_MCP_PATH],
+        "env": _mcp_env(),
     }
-)
+}
+
+# Add Twitter MCP if bearer token is available
+if os.getenv("TWITTER_BEARER_TOKEN"):
+    _mcp_servers["twitter_MCP"] = {
+        "transport": "stdio",
+        "command": sys.executable,
+        "args": [_TWITTER_MCP_PATH],
+        "env": _mcp_env(),
+    }
+
+client = MultiServerMCPClient(_mcp_servers)
 
 async def _open_yfinance_session():
     if not os.path.exists(_YFINANCE_MCP_PATH):
@@ -181,6 +192,20 @@ async def _open_yfinance_session():
         raise RuntimeError(
             "MCP stdio channel broke. The yfinance MCP server likely crashed.\n"
             f"Try running it directly to see the real error:\n  {sys.executable} {_YFINANCE_MCP_PATH}"
+        ) from e
+
+async def _open_twitter_session():
+    if not os.path.exists(_TWITTER_MCP_PATH):
+        raise FileNotFoundError(f"twitter MCP not found at: {_TWITTER_MCP_PATH}")
+    if not os.getenv("TWITTER_BEARER_TOKEN"):
+        logger.warning("TWITTER_BEARER_TOKEN not set, Twitter tools will not be available")
+        return None
+    try:
+        return client.session("twitter_MCP")
+    except anyio.BrokenResourceError as e:
+        raise RuntimeError(
+            "MCP stdio channel broke. The twitter MCP server likely crashed.\n"
+            f"Try running it directly to see the real error:\n  {sys.executable} {_TWITTER_MCP_PATH}"
         ) from e
 
 # Model Initialization
@@ -197,8 +222,19 @@ async def main(args: argparse.Namespace) -> None:
     )
     
     try:
-        async with (await _open_yfinance_session()) as session:
-            tools = await load_mcp_tools(session)
+        # Open yfinance session
+        async with (await _open_yfinance_session()) as yfinance_session:
+            tools = await load_mcp_tools(yfinance_session)
+            
+            # Try to load Twitter tools if available
+            news_analyst_tools = [internet_search]
+            twitter_session_ctx = await _open_twitter_session()
+            
+            if twitter_session_ctx:
+                async with twitter_session_ctx as twitter_session:
+                    twitter_tools = await load_mcp_tools(twitter_session)
+                    news_analyst_tools.extend(twitter_tools)
+                    logger.info(f"Loaded {len(twitter_tools)} Twitter tools for News_Analyst")
 
             subagents = [
             {
@@ -218,9 +254,23 @@ async def main(args: argparse.Namespace) -> None:
             {
                 "model": model,
                 "name": "News_Analyst",
-                "description": "Gathers latest news and updates on stocks",
-                "system_prompt": "Analyze the Recent Stock News and summarize the important events impacting the stock price.",
-                "tools": [internet_search],
+                "description": "Gathers latest news and updates on stocks from various sources including Twitter/X",
+                "system_prompt": """Analyze the Recent Stock News and summarize the important events impacting the stock price.
+                
+                You have access to:
+                1. internet_search: General web search for news articles
+                2. search_tweets: Search Twitter/X for relevant tweets (if available)
+                3. search_tweets_by_user: Get tweets from specific Twitter users (if available)
+                4. get_user_info: Get information about Twitter users to verify credibility (if available)
+                
+                When using Twitter tools:
+                - Focus on tweets from verified or genuine authors with substantial followings
+                - The search_tweets function automatically filters for genuine authors by default
+                - Look for tweets from company executives, industry analysts, financial journalists, and credible market commentators
+                - Consider engagement metrics (likes, retweets, replies) to gauge tweet importance
+                - Cross-reference Twitter sentiment with traditional news sources
+                """,
+                "tools": news_analyst_tools,
             },
             {
                 "model": model,

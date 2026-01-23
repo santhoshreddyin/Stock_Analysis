@@ -12,3 +12,4 @@ tavily-python
 openpyxl
 finnhub-python
 sqlalchemy
+tweepy
