@@ -140,13 +140,13 @@ jobs:
     - name: Update Backend image
       run: |
         kubectl set image deployment/backend \
-          backend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ github.sha }} \
+          backend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:latest \
           -n stock-analysis
 
     - name: Update Frontend image
       run: |
         kubectl set image deployment/frontend \
-          frontend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ github.sha }} \
+          frontend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:latest \
           -n stock-analysis
 
     - name: Wait for rollout

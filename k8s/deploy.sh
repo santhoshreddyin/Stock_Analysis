@@ -1,3 +1,4 @@
+#!/bin/bash
 # Apply all Kubernetes resources in order
 kubectl apply -f namespace.yaml
 kubectl apply -f configmap.yaml

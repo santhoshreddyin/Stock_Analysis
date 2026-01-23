@@ -13,6 +13,6 @@ metadata:
   name: backend-config
   namespace: stock-analysis
 data:
-  DATABASE_URL: "postgresql://stockuser:stockpassword@postgres-service:5432/stockdb"
+  DATABASE_URL: "postgresql://stockuser@postgres-service:5432/stockdb"
   OPENAI_MODEL: "gpt-4"
   OPENAI_MAX_TOKENS: "6000"

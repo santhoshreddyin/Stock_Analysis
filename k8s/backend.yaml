@@ -21,11 +21,13 @@ spec:
         - containerPort: 8000
           name: http
         env:
-        - name: DATABASE_URL
+        - name: POSTGRES_PASSWORD
           valueFrom:
-            configMapKeyRef:
-              name: backend-config
-              key: DATABASE_URL
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_PASSWORD
+        - name: DATABASE_URL
+          value: "postgresql://stockuser:$(POSTGRES_PASSWORD)@postgres-service:5432/stockdb"
         - name: OPENAI_API_KEY
           valueFrom:
             secretKeyRef:
