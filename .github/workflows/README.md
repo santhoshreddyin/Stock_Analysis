@@ -104,12 +104,23 @@ Add the following secrets:
 
 | Secret Name | Description | How to Get |
 |-------------|-------------|------------|
+| `DOCKERHUB_USERNAME` | Docker Hub username | Your Docker Hub account username |
+| `DOCKERHUB_TOKEN` | Docker Hub access token | https://hub.docker.com/settings/security |
 | `OPENAI_API_KEY` | OpenAI API key | https://platform.openai.com/api-keys |
 | `TAVILY_API_KEY` | Tavily search API key | https://tavily.com/ |
 | `GMAIL_SMTP_USER` | Gmail email address | Your Gmail account |
 | `GMAIL_APP_PASSWORD` | Gmail app password | https://myaccount.google.com/apppasswords |
 | `TWITTER_BEARER_TOKEN` | Twitter API token (optional) | https://developer.twitter.com/ |
+| `POSTGRES_PASSWORD` | PostgreSQL database password | Choose a secure password |
 | `KUBE_CONFIG` | Base64-encoded kubeconfig | See below |
+
+#### Generate DockerHub Access Token:
+
+1. Go to https://hub.docker.com/settings/security
+2. Click **New Access Token**
+3. Give it a name (e.g., "GitHub Actions")
+4. Select appropriate permissions (Read, Write, Delete)
+5. Copy the token and save as `DOCKERHUB_TOKEN` secret
 
 #### Generate KUBE_CONFIG:
 
@@ -160,22 +171,20 @@ For deploying to local Kubernetes, you need a self-hosted runner:
    - Docker installed
    - kubectl installed and configured
    - Access to your Kubernetes cluster
+   - `envsubst` utility (usually part of `gettext` package)
 
-### 3. GitHub Container Registry (GHCR)
+### 3. Docker Hub Registry
 
-The CD workflow pushes images to GitHub Container Registry (ghcr.io).
+The CD workflow pushes images to Docker Hub (hub.docker.com).
 
-**Enable Package Permissions**:
-1. Go to: **Settings → Actions → General**
-2. Scroll to: **Workflow permissions**
-3. Select: **Read and write permissions**
-4. Check: **Allow GitHub Actions to create and approve pull requests**
-5. Click: **Save**
+**Create Docker Hub Account**:
+1. Go to https://hub.docker.com/signup
+2. Create an account or sign in
+3. Create access token as described above
 
-**Make Packages Public** (Optional):
-1. Go to your profile → **Packages**
-2. Select the package
-3. **Package settings** → Change visibility
+**Image Naming**:
+- Backend image: `<your-username>/stock-backend:latest`
+- Frontend image: `<your-username>/stock-frontend:latest`
 
 ## Usage
 

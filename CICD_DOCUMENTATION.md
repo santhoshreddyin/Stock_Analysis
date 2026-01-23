@@ -112,13 +112,21 @@ Navigate to your repository → Settings → Secrets and variables → Actions �
 Add the following secrets:
 
 ```yaml
+DOCKERHUB_USERNAME: <your-dockerhub-username>
+DOCKERHUB_TOKEN: <your-dockerhub-access-token>
 KUBE_CONFIG: <base64-encoded-kubeconfig>
 OPENAI_API_KEY: <your-openai-key>
 TAVILY_API_KEY: <your-tavily-key>
 GMAIL_SMTP_USER: <your-email>
 GMAIL_APP_PASSWORD: <app-password>
 TWITTER_BEARER_TOKEN: <twitter-token>
+POSTGRES_PASSWORD: <your-secure-postgres-password>
 ```
+
+To get DockerHub access token:
+1. Go to https://hub.docker.com/settings/security
+2. Click "New Access Token"
+3. Give it a name and copy the token
 
 To get base64-encoded kubeconfig:
 ```bash
@@ -174,8 +182,8 @@ git push origin main
 **Triggers**: Push to main, Manual dispatch
 
 **Jobs**:
-- **Build & Push Images**: Builds Docker images and pushes to GitHub Container Registry
-- **Deploy to Kubernetes**: Deploys to Kubernetes cluster using kubectl
+- **Build & Push Images**: Builds Docker images, scans for vulnerabilities with Trivy, and pushes to Docker Hub
+- **Deploy to Kubernetes**: Updates secrets from GitHub Secrets and deploys to Kubernetes cluster using kubectl
 
 **Manual Trigger**:
 1. Go to Actions tab

@@ -50,20 +50,25 @@ docker build -t stock-frontend:latest -f Dockerfile.frontend .
 
 ### 4. Deploy to Kubernetes
 
+Set your DockerHub username (required for pulling images):
+```bash
+export DOCKERHUB_USERNAME=your-dockerhub-username
+```
+
 Run the deployment script:
 ```bash
 chmod +x deploy.sh
 ./deploy.sh
 ```
 
-Or manually apply each file:
+Or manually apply each file with environment substitution:
 ```bash
 kubectl apply -f namespace.yaml
 kubectl apply -f configmap.yaml
 kubectl apply -f secrets.yaml
 kubectl apply -f postgres.yaml
-kubectl apply -f backend.yaml
-kubectl apply -f frontend.yaml
+envsubst < backend.yaml | kubectl apply -f -
+envsubst < frontend.yaml | kubectl apply -f -
 kubectl apply -f ingress.yaml
 ```
 

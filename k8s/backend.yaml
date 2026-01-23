@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
       - name: backend
-        image: stock-backend:latest
-        imagePullPolicy: IfNotPresent
+        image: ${DOCKERHUB_USERNAME}/stock-backend:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8000
           name: http

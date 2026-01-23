@@ -15,9 +15,9 @@ on:
           - staging
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME_BACKEND: ${{ github.repository }}/backend
-  IMAGE_NAME_FRONTEND: ${{ github.repository }}/frontend
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  IMAGE_NAME_BACKEND: ${{ secrets.DOCKERHUB_USERNAME }}/stock-backend
+  IMAGE_NAME_FRONTEND: ${{ secrets.DOCKERHUB_USERNAME }}/stock-frontend
 
 jobs:
   build-and-push-images:
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      security-events: write
 
     steps:
     - name: Checkout code
@@ -34,18 +34,17 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Log in to Container Registry
+    - name: Log in to Docker Hub
       uses: docker/login-action@v3
       with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     - name: Extract metadata for Backend
       id: meta-backend
       uses: docker/metadata-action@v5
       with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}
+        images: ${{ env.IMAGE_NAME_BACKEND }}
         tags: |
           type=ref,event=branch
           type=ref,event=pr
@@ -55,6 +54,7 @@ jobs:
           type=raw,value=latest,enable={{is_default_branch}}
 
     - name: Build and push Backend image
+      id: build-backend
       uses: docker/build-push-action@v5
       with:
         context: .
@@ -65,11 +65,25 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
+    - name: Run Trivy vulnerability scanner on Backend image
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.IMAGE_NAME_BACKEND }}:latest
+        format: 'sarif'
+        output: 'trivy-backend-results.sarif'
+
+    - name: Upload Trivy results for Backend to GitHub Security
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-backend-results.sarif'
+        category: 'backend-image'
+
     - name: Extract metadata for Frontend
       id: meta-frontend
       uses: docker/metadata-action@v5
       with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}
+        images: ${{ env.IMAGE_NAME_FRONTEND }}
         tags: |
           type=ref,event=branch
           type=ref,event=pr
@@ -79,6 +93,7 @@ jobs:
           type=raw,value=latest,enable={{is_default_branch}}
 
     - name: Build and push Frontend image
+      id: build-frontend
       uses: docker/build-push-action@v5
       with:
         context: .
@@ -89,9 +104,23 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
+    - name: Run Trivy vulnerability scanner on Frontend image
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.IMAGE_NAME_FRONTEND }}:latest
+        format: 'sarif'
+        output: 'trivy-frontend-results.sarif'
+
+    - name: Upload Trivy results for Frontend to GitHub Security
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-frontend-results.sarif'
+        category: 'frontend-image'
+
     outputs:
-      backend-image: ${{ steps.meta-backend.outputs.tags }}
-      frontend-image: ${{ steps.meta-frontend.outputs.tags }}
+      backend-image: ${{ env.IMAGE_NAME_BACKEND }}:latest
+      frontend-image: ${{ env.IMAGE_NAME_FRONTEND }}:latest
 
   deploy-to-kubernetes:
     name: Deploy to Kubernetes
@@ -127,28 +156,35 @@ jobs:
           --from-literal=TWITTER_BEARER_TOKEN="${{ secrets.TWITTER_BEARER_TOKEN }}" \
           --namespace=stock-analysis \
           --dry-run=client -o yaml | kubectl apply -f -
+        
+        kubectl create secret generic postgres-secret \
+          --from-literal=POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}" \
+          --namespace=stock-analysis \
+          --dry-run=client -o yaml | kubectl apply -f -
 
     - name: Deploy to Kubernetes
+      env:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       run: |
         cd k8s
         kubectl apply -f namespace.yaml
         kubectl apply -f configmap.yaml
         kubectl apply -f secrets.yaml
         kubectl apply -f postgres.yaml
-        kubectl apply -f backend.yaml
-        kubectl apply -f frontend.yaml
+        envsubst < backend.yaml | kubectl apply -f -
+        envsubst < frontend.yaml | kubectl apply -f -
         kubectl apply -f ingress.yaml
 
     - name: Update Backend image
       run: |
         kubectl set image deployment/backend \
-          backend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:latest \
+          backend=${{ env.IMAGE_NAME_BACKEND }}:latest \
           -n stock-analysis
 
     - name: Update Frontend image
       run: |
         kubectl set image deployment/frontend \
-          frontend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:latest \
+          frontend=${{ env.IMAGE_NAME_FRONTEND }}:latest \
           -n stock-analysis
 
     - name: Wait for rollout

@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: stock-frontend:latest
-        imagePullPolicy: IfNotPresent
+        image: ${DOCKERHUB_USERNAME}/stock-frontend:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
           name: http
