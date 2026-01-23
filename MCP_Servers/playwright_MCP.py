@@ -1,5 +1,5 @@
 """Playwright MCP server (FastMCP style).
-- Each function is synchronous/asynchronous and importable for local scripts.
+- Each function is asynchronous and importable for local scripts.
 - The same functions are exposed as MCP tools via `@mcp.tool()`.
 - Running this file starts an stdio MCP server.
 """
@@ -424,6 +424,5 @@ if __name__ == "__main__":
         mcp.run(transport="stdio")
     finally:
         # Cleanup on shutdown
-        import asyncio
         asyncio.run(_close_browser())
 
