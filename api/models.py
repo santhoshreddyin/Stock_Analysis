@@ -3,7 +3,7 @@ Pydantic models for API request/response validation
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 
@@ -72,3 +72,74 @@ class StockHistoryResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# News and Graph models
+
+class NewsArticleResponse(BaseModel):
+    """Response model for news article"""
+    id: int
+    article_id: str
+    symbol: str
+    title: str
+    content: str
+    source: str
+    url: Optional[str] = None
+    author: Optional[str] = None
+    published_date: datetime
+    collected_date: datetime
+    sentiment_score: Optional[float] = None
+    relevance_score: Optional[float] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
+
+
+class GraphNodeResponse(BaseModel):
+    """Response model for graph node"""
+    id: str
+    label: str
+    type: str
+    symbol: Optional[str] = None
+    mentionCount: Optional[int] = None
+    properties: Optional[Dict[str, Any]] = None
+
+
+class GraphEdgeResponse(BaseModel):
+    """Response model for graph edge"""
+    source: str
+    target: str
+    type: str
+    weight: float
+    context: Optional[str] = None
+
+
+class GraphDataResponse(BaseModel):
+    """Response model for graph visualization data"""
+    nodes: List[GraphNodeResponse]
+    edges: List[GraphEdgeResponse]
+
+
+class NewsSummaryResponse(BaseModel):
+    """Response model for news summary"""
+    id: int
+    symbol: str
+    summary_date: datetime
+    period: str
+    summary_text: str
+    key_events: Optional[List[Dict[str, Any]]] = None
+    sentiment_trend: Optional[str] = None
+    overall_sentiment_score: Optional[float] = None
+    article_count: int
+
+    class Config:
+        from_attributes = True
+
+
+class NewsSearchRequest(BaseModel):
+    """Request model for semantic news search"""
+    query: str = Field(..., description="Search query")
+    symbol: Optional[str] = Field(None, description="Filter by stock symbol")
+    limit: int = Field(10, ge=1, le=100, description="Maximum results")
+
