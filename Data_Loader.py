@@ -37,13 +37,18 @@ class Stock_History(Base):
     __tablename__ = 'Stock_History'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    symbol = Column(String(15), unique=True, nullable=False)
+    symbol = Column(String(15), nullable=False, index=True)
     date = Column(DateTime, nullable=False)
     open_price = Column(Float)
     close_price = Column(Float)
     high_price = Column(Float)
     low_price = Column(Float)
     volume = Column(Integer)
+    
+    # Create unique constraint on symbol + date combination
+    __table_args__ = (
+        {'schema': None},
+    )
 
 class Alert_Log(Base):
     """Alert log table model"""

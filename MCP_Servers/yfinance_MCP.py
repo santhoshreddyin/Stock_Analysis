@@ -75,12 +75,240 @@ def get_stock_price(symbol: str) -> float:
 
 
 @mcp.tool()
-def get_historical_data(symbol: str, period: str = "1mo") -> list[dict[str, Any]]:
+def get_historical_data(symbol: str, period: str = "1mo", use_db: bool = True) -> list[dict[str, Any]]:
     """Get historical OHLCV data for `symbol`.
-
+    
+    If use_db=True, checks database first and only fetches new data from yfinance if needed.
     Returns a list of dicts with keys: date, open, high, low, close, volume.
+    
+    Args:
+        symbol: Stock ticker symbol
+        period: Period to return (e.g., "1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max")
+        use_db: Whether to use database caching (default: True)
     """
+    
+    def parse_period_to_days(period: str) -> int:
+        """Convert period string to approximate number of days."""
+        period_map = {
+            "1d": 1, "5d": 5, "1mo": 30, "3mo": 90, "6mo": 180,
+            "1y": 365, "2y": 730, "5y": 1825, "10y": 3650,
+            "ytd": 365, "max": 10000  # Use a large number for max
+        }
+        return period_map.get(period.lower(), 30)  # Default to 30 days
+    
     try:
+        if use_db:
+            # Import here to avoid circular dependency
+            from Data_Loader import PostgreSQLConnection, Stock_History
+            from sqlalchemy import func, desc
+            from datetime import datetime, timedelta
+            
+            requested_days = parse_period_to_days(period)
+            
+            db = PostgreSQLConnection()
+            if db.connect():
+                session = db.get_session()
+                if session:
+                    try:
+                        # Get the last recorded date for this symbol
+                        last_record = session.query(Stock_History).filter_by(
+                            symbol=symbol
+                        ).order_by(desc(Stock_History.date)).first()
+                        
+                        today = datetime.now().date()
+                        
+                        if last_record:
+                            last_date = last_record.date.date() if hasattr(last_record.date, 'date') else last_record.date
+                            
+                            # If last record is today or recent, return DB data limited to requested period
+                            if last_date >= today:
+                                logger.info(f"Using cached data for {symbol} (up to date)")
+                                cutoff_date = today - timedelta(days=requested_days)
+                                
+                                all_history = session.query(Stock_History).filter(
+                                    Stock_History.symbol == symbol,
+                                    Stock_History.date >= cutoff_date
+                                ).order_by(Stock_History.date).all()
+                                
+                                data = []
+                                for record in all_history:
+                                    data.append({
+                                        "date": record.date.strftime("%Y-%m-%d"),
+                                        "open": float(record.open_price) if record.open_price else None,
+                                        "high": float(record.high_price) if record.high_price else None,
+                                        "low": float(record.low_price) if record.low_price else None,
+                                        "close": float(record.close_price) if record.close_price else None,
+                                        "volume": int(record.volume) if record.volume else None,
+                                    })
+                                session.close()
+                                db.close()
+                                return data
+                            
+                            # Fetch from (last_date - 1) to today
+                            start_date = last_date - timedelta(days=1)
+                            logger.info(f"Fetching new data for {symbol} from {start_date} to {today}")
+                            
+                            stock = yf.Ticker(symbol)
+                            # Use start/end instead of period for incremental fetch
+                            history = stock.history(start=start_date, end=today + timedelta(days=1))
+                            
+                            if not history.empty:
+                                # Save new data to database
+                                for date, row in history.iterrows():
+                                    record_date = date.date() if hasattr(date, 'date') else date
+                                    
+                                    # Check if this date already exists
+                                    existing = session.query(Stock_History).filter_by(
+                                        symbol=symbol,
+                                        date=date
+                                    ).first()
+                                    
+                                    if existing:
+                                        # Update existing record
+                                        existing.open_price = float(row["Open"]) if row.get("Open") is not None else None
+                                        existing.high_price = float(row["High"]) if row.get("High") is not None else None
+                                        existing.low_price = float(row["Low"]) if row.get("Low") is not None else None
+                                        existing.close_price = float(row["Close"]) if row.get("Close") is not None else None
+                                        existing.volume = int(row["Volume"]) if row.get("Volume") is not None else None
+                                    else:
+                                        # Insert new record
+                                        new_history = Stock_History(
+                                            symbol=symbol,
+                                            date=date,
+                                            open_price=float(row["Open"]) if row.get("Open") is not None else None,
+                                            close_price=float(row["Close"]) if row.get("Close") is not None else None,
+                                            high_price=float(row["High"]) if row.get("High") is not None else None,
+                                            low_price=float(row["Low"]) if row.get("Low") is not None else None,
+                                            volume=int(row["Volume"]) if row.get("Volume") is not None else None
+                                        )
+                                        session.add(new_history)
+                                
+                                session.commit()
+                                logger.info(f"Updated {len(history)} records for {symbol}")
+                            
+                            # Return data from database limited to requested period
+                            cutoff_date = today - timedelta(days=requested_days)
+                            all_history = session.query(Stock_History).filter(
+                                Stock_History.symbol == symbol,
+                                Stock_History.date >= cutoff_date
+                            ).order_by(Stock_History.date).all()
+                            
+                            data = []
+                            for record in all_history:
+                                data.append({
+                                    "date": record.date.strftime("%Y-%m-%d"),
+                                    "open": float(record.open_price) if record.open_price else None,
+                                    "high": float(record.high_price) if record.high_price else None,
+                                    "low": float(record.low_price) if record.low_price else None,
+                                    "close": float(record.close_price) if record.close_price else None,
+                                    "volume": int(record.volume) if record.volume else None,
+                                })
+                            session.close()
+                            db.close()
+                            return data
+                        
+                        else:
+                            # No records exist, fetch maximum available data from yfinance
+                            logger.info(f"No historical data in DB for {symbol}, fetching maximum available data from yfinance")
+                            stock = yf.Ticker(symbol)
+                            history = stock.history(period="max")  # Fetch all available history
+                            
+                            if not history.empty:
+                                # Save to database in batches to avoid parameter limit
+                                batch_size = 100  # Insert 100 records at a time
+                                records_to_insert = []
+                                
+                                for date, row in history.iterrows():
+                                    records_to_insert.append({
+                                        'symbol': symbol,
+                                        'date': date,
+                                        'open_price': float(row["Open"]) if row.get("Open") is not None else None,
+                                        'close_price': float(row["Close"]) if row.get("Close") is not None else None,
+                                        'high_price': float(row["High"]) if row.get("High") is not None else None,
+                                        'low_price': float(row["Low"]) if row.get("Low") is not None else None,
+                                        'volume': int(row["Volume"]) if row.get("Volume") is not None else None
+                                    })
+                                    
+                                    # Insert in batches
+                                    if len(records_to_insert) >= batch_size:
+                                        try:
+                                            session.bulk_insert_mappings(Stock_History, records_to_insert)
+                                            session.commit()
+                                            records_to_insert = []
+                                        except Exception as batch_error:
+                                            session.rollback()
+                                            logger.warning(f"Batch insert failed for {symbol}, trying individual inserts: {str(batch_error)}")
+                                            # Try inserting individually with conflict handling
+                                            for record in records_to_insert:
+                                                try:
+                                                    existing = session.query(Stock_History).filter_by(
+                                                        symbol=record['symbol'],
+                                                        date=record['date']
+                                                    ).first()
+                                                    if not existing:
+                                                        new_history = Stock_History(**record)
+                                                        session.add(new_history)
+                                                        session.commit()
+                                                except Exception as e:
+                                                    session.rollback()
+                                                    continue
+                                            records_to_insert = []
+                                
+                                # Insert remaining records
+                                if records_to_insert:
+                                    try:
+                                        session.bulk_insert_mappings(Stock_History, records_to_insert)
+                                        session.commit()
+                                    except Exception as batch_error:
+                                        session.rollback()
+                                        logger.warning(f"Final batch insert failed for {symbol}, trying individual inserts: {str(batch_error)}")
+                                        for record in records_to_insert:
+                                            try:
+                                                existing = session.query(Stock_History).filter_by(
+                                                    symbol=record['symbol'],
+                                                    date=record['date']
+                                                ).first()
+                                                if not existing:
+                                                    new_history = Stock_History(**record)
+                                                    session.add(new_history)
+                                                    session.commit()
+                                            except Exception as e:
+                                                session.rollback()
+                                                continue
+                                
+                                logger.info(f"Saved {len(history)} records for {symbol}")
+                                
+                                # Return only the requested period from the fetched data
+                                today = datetime.now().date()
+                                cutoff_date = today - timedelta(days=requested_days)
+                                data = []
+                                for date, row in history.iterrows():
+                                    record_date = date.date() if hasattr(date, 'date') else date
+                                    if record_date >= cutoff_date:
+                                        data.append({
+                                            "date": date.strftime("%Y-%m-%d"),
+                                            "open": float(row["Open"]) if row.get("Open") is not None else None,
+                                            "high": float(row["High"]) if row.get("High") is not None else None,
+                                            "low": float(row["Low"]) if row.get("Low") is not None else None,
+                                            "close": float(row["Close"]) if row.get("Close") is not None else None,
+                                            "volume": int(row["Volume"]) if row.get("Volume") is not None else None,
+                                        })
+                                session.close()
+                                db.close()
+                                return data
+                            
+                            session.close()
+                            db.close()
+                            return []
+                    
+                    except Exception as e:
+                        session.rollback()
+                        session.close()
+                        db.close()
+                        logger.error(f"Database error for {symbol}, falling back to direct yfinance: {str(e)}")
+                        # Fall through to direct yfinance fetch
+        
+        # Direct fetch from yfinance (when use_db=False or database error)
         stock = yf.Ticker(symbol)
         history = stock.history(period=period)
         if history.empty:

@@ -1,169 +1,207 @@
 from MCP_Servers.User_Notifications_MCP import send_telegram_message
-from MCP_Servers.yfinance_MCP import get_stock_price,get_historical_data
-from HelperFunctions import to_float
 from Data_Loader import PostgreSQLConnection
+from StockDataModels import StockDataModel
 from typing import Any
 import math
-import pandas as pd
-from pathlib import Path
-import os
 from datetime import datetime
+import logging
+from pathlib import Path
 
-#Stock_Universe = Stocks_US 
+# Configure logging to both file and console
+log_dir = Path("logs")
+log_dir.mkdir(exist_ok=True)
+
+# Create logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)  # Capture all levels
+
+# Create formatters
+detailed_formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+simple_formatter = logging.Formatter(
+    '%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# File handler - detailed logs (DEBUG level and above)
+file_handler = logging.FileHandler(
+    log_dir / f"market_watcher_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(detailed_formatter)
+
+# Console handler - only warnings and errors (WARNING level and above)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.WARNING)
+console_handler.setFormatter(simple_formatter)
+
+# Add handlers to logger
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# Prevent propagation to root logger
+logger.propagate = False
 
 
+def Monitor_Market(Alert_Threshold: float = 2.0, Alerts_Enabled: bool = False, Frequency: str = "Daily"):
+    """
+    Monitor stock market for alerts and updates.
+    All data is stored in the database - no Excel files used.
+    
+    Args:
+        Alert_Threshold: Price change threshold percentage for alerts
+        Alerts_Enabled: Whether to send Telegram alerts
+        Frequency: Stock selection frequency ("Daily", "Weekly", "Monthly")
+    """
+    # Initialize database connection
+    db = PostgreSQLConnection()
+    
+    # Check if connection is successful
+    if not db.connect():
+        logger.error("Failed to connect to database")
+        logger.error("Please check your database configuration and connection settings")
+        return {
+            "total_stocks": 0,
+            "stocks_processed": 0,
+            "stocks_skipped": 0,
+            "alerts_generated": 0,
+            "timestamp": datetime.now(),
+            "error": "Database connection failed"
+        }
 
-def Monitor_Market(Stock_Universe: list[str], Alert_Threshold: float = 2.0, Alerts_Enabled: bool = False, db: PostgreSQLConnection = None):
-    summary_rows: list[dict[str, Any]] = []
-    summary_columns = ["Stock", "Current Price", "Volume","50-day MA ", "200-day MA","Target Low","Target High","52 Week Low","52 Week High","Bullish Alert","Recommendation","Sector","Industry","Description"]
+    
+    # Get stocks from database
+    Stocks = db.get_all_stocks(Frequency=Frequency)
+    
+    if Stocks is None or len(Stocks) == 0:
+        logger.warning(f"No stocks found with Frequency='{Frequency}'")
+        logger.warning("Please check if stocks are loaded in the database")
+        db.close()
+        return {
+            "total_stocks": 0,
+            "stocks_processed": 0,
+            "stocks_skipped": 0,
+            "alerts_generated": 0,
+            "timestamp": datetime.now(),
+            "error": f"No stocks found with Frequency={Frequency}"
+        }
+    
+    # Extract stock symbols from Stock_List objects
+    stock_symbols = [stock.symbol for stock in Stocks]
+    
+    logger.info(f"Found {len(stock_symbols)} stocks to monitor")
+    
+    stocks_processed = 0
+    stocks_skipped = 0
+    alerts_generated = 0
 
-    for stock in Stock_Universe:
-        Info = get_stock_price(stock)
-
-        Current_Price = to_float(Info.get("Current Price"))
-        Target_High = to_float(Info.get("Target High"))
-        Target_Low = to_float(Info.get("Target Low"))
-        Week52_High = to_float(Info.get("52 Week High"))
-        Week52_Low = to_float(Info.get("52 Week Low"))
-        Recommendation = Info.get("Recommendation")
-        Description = Info.get("Description")
-        history = get_historical_data(stock, period="200d")
-        sector = Info.get("sector")
-        industry = Info.get("industry")
-        # Load history to pandas DataFrame for easier manipulation
+    for stock_symbol in stock_symbols:
+        logger.info(f"Processing {stock_symbol}...")
         
-        history_df = pd.DataFrame(history)
-        if history_df.empty:
-            print(f"No historical data for {stock}")
+        # Create StockDataModel instance - automatically fetches all data
+        stock = StockDataModel(symbol=stock_symbol)
+        
+        # Check if data fetch was successful
+        if not stock.data_fetch_success or stock.history_df is None or stock.history_df.empty:
+            logger.warning(f"Skipping {stock_symbol} - No data available")
+            stocks_skipped += 1
             continue
+        
+        stocks_processed += 1
+        Bullish_Alert = False
 
-        # Calculate 50-day and 200-day moving averages
-        history_df['close'] = pd.to_numeric(history_df['close'], errors='coerce')
-        history_df['50_MA'] = history_df['close'].rolling(window=50).mean()
-        history_df['200_MA'] = history_df['close'].rolling(window=200).mean()
-        latest_50_MA = history_df['50_MA'].iloc[-1]
-        latest_200_MA = history_df['200_MA'].iloc[-1]
-        #get average Volume
-        average_volume = history_df['volume'].rolling(window=50).mean().iloc[-1]
-        Bullish_Alert = " "
-
-        # Check the Alert Conditions
-        # Bullish Crossover: 50-day MA crosses above 200-day MA and Current Price is above 50-day MA
-        if pd.notna(latest_50_MA) and pd.notna(latest_200_MA) and Current_Price is not None:
-            if latest_50_MA > latest_200_MA and Current_Price > latest_50_MA:
-                message = (f"Bullish Crossover Alert!: {stock}\n"
-                           f"Current Price: {Current_Price}\n"
-                           f"50-day MA: {latest_50_MA}\n"
-                           f"200-day MA: {latest_200_MA}\n")
-                Bullish_Alert = "Yes"
+        # Check for Bullish Crossover Alert using StockDataModel methods
+        if stock.has_technical_data() and stock.current_price is not None:
+            if stock.has_bullish_crossover_signal():
+                message = (f"Bullish Crossover Alert!: {stock.symbol}\n"
+                           f"Current Price: {stock.current_price}\n"
+                           f"50-day MA: {stock.ma_50}\n"
+                           f"200-day MA: {stock.ma_200}\n")
+                Bullish_Alert = True
+                alerts_generated += 1
                 if Alerts_Enabled:
-                    print("Sending Telegram Alert for Bullish Crossover")
+                    logger.info("Sending Telegram Alert for Bullish Crossover")
                     send_telegram_message(message=message)
                 # Save alert to database
                 if db:
-                    db.add_alert(stock, "Bullish Crossover", message, "Sent")
-                print(message)
+                    db.add_alert(stock.symbol, "Bullish Crossover", message, "Sent")
+                logger.info(message)
             else:
-                print(f"No alert for {stock}. Current Price: {Current_Price}, 50-day MA: {latest_50_MA}, 200-day MA: {latest_200_MA}")
+                logger.debug(f"No alert for {stock.symbol}. Current Price: {stock.current_price}, 50-day MA: {stock.ma_50}, 200-day MA: {stock.ma_200}")
 
-        # Greater than threshold Change in Previous Close Price
-        Previous_Close = to_float(history_df['close'].iloc[-2]) if len(history_df) >= 2 else None
-        if Previous_Close is not None and Current_Price is not None:
-            price_change = ((Current_Price - Previous_Close) / Previous_Close) * 100
-            if abs(price_change) >= Alert_Threshold:
-                direction = "increased" if price_change > 0 else "decreased"
-                message = (f"Price Change Alert!: {stock}\n"
-                           f"Previous Close: {Previous_Close:.1f}\n"
-                           f"Current Price: {Current_Price:.1f}\n"
-                           f"Price Change: {price_change:.1f}%\n")
-                if Alerts_Enabled:
-                    print("Sending Telegram Alert for Price Change")
-                    send_telegram_message(message=message)
-                # Save alert to database
-                if db:
-                    db.add_alert(stock, "Price Change", message, "Sent")
-                print(message)
-            else:
-                print(f"No significant price change for {stock}. Change: {price_change:.1f}%")
+        # Check for significant price change using StockDataModel methods
+        if stock.has_significant_price_change(Alert_Threshold):
+            direction = "increased" if stock.price_change_percent > 0 else "decreased"
+            message = (f"Price Change Alert!: {stock.symbol}\n"
+                       f"Previous Close: {stock.previous_close:.1f}\n"
+                       f"Current Price: {stock.current_price:.1f}\n"
+                       f"Price Change: {stock.price_change_percent:.1f}%\n")
+            alerts_generated += 1
+            if Alerts_Enabled:
+                logger.info("Sending Telegram Alert for Price Change")
+                send_telegram_message(message=message)
+            # Save alert to database
+            db.add_alert(stock.symbol, "Price Change", message, "Sent")
+            logger.info(message)
+        else:
+            if stock.price_change_percent is not None:
+                logger.debug(f"No significant price change for {stock.symbol}. Change: {stock.price_change_percent:.1f}%")
 
         # Update database with stock price data
-        if db:
-            db.update_stock_price(
-                symbol=stock,
-                current_price=Current_Price,
-                recommendation=Recommendation,
-                target_low=Target_Low,
-                target_high=Target_High,
-                week52_low=Week52_Low,
-                week52_high=Week52_High,
-                avg_volume=int(average_volume) if average_volume is not None and not math.isnan(average_volume) else None
-            )
+        db.update_stock_price(
+            symbol=stock.symbol,
+            current_price=stock.current_price,
+            recommendation=stock.recommendation,
+            target_low=stock.target_low,
+            target_high=stock.target_high,
+            week52_low=stock.week52_low,
+            week52_high=stock.week52_high,
+            avg_volume=int(stock.average_volume) if stock.average_volume is not None and not math.isnan(stock.average_volume) else None
+        )
 
-        # Append to Summary (no DataFrame.append)
-        summary_rows.append({
-            "Stock": stock,
-            "Current Price": Current_Price,
-            "Volume": int(average_volume) if average_volume is not None and not math.isnan(average_volume) else None,
-            "50-day MA ": latest_50_MA,
-            "200-day MA": latest_200_MA,
-            "Target Low": Target_Low,
-            "Target High": Target_High,
-            "52 Week Low": Week52_Low,
-            "52 Week High": Week52_High,
-            "Bullish Alert": Bullish_Alert,
-            "Recommendation": Recommendation,
-            "Sector": sector,
-            "Industry": industry,
-            "Description": Description
-        })
-
-    # Write to Excel File
-    Path("Data").mkdir(parents=True, exist_ok=True)
-    df_summary = pd.DataFrame(summary_rows, columns=summary_columns)
-    #df_summary.to_excel(OutputFile, index=False)
+    # Close database connection
+    db.close()
+    
+    # Return summary statistics
+    return {
+        "total_stocks": len(stock_symbols),
+        "stocks_processed": stocks_processed,
+        "stocks_skipped": stocks_skipped,
+        "alerts_generated": alerts_generated,
+        "timestamp": datetime.now()
+    }
 
 
 if __name__ == "__main__":
-    # Initialize database connection
-    db = PostgreSQLConnection(
-        host=os.getenv("DB_HOST", "localhost"),
-        port=int(os.getenv("DB_PORT", "5432")),
-        database=os.getenv("DB_NAME", "postgres"),
-        user=os.getenv("DB_USER", "postgres"),
-        password=os.getenv("DB_PASSWORD", "postgres")
-    )
+    logger.info("=" * 70)
+    logger.info("STOCK MARKET MONITOR - Database-Driven")
+    logger.info("=" * 70)
+    logger.info(f"Start Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"Log file: logs/market_watcher_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
     
-    if db.connect():
-        db.create_tables()
-        
-        # Read Stock Lists from Data Folder
-        #Stocks_US = ["AAPL", "MSFT", "GOOG", "AMZN", "META"]
-        Stocks_US = pd.read_excel("Data/us_stock_symbols.xlsx")["symbol"].tolist() 
-        #Stocks_US = Stocks_US[:200]  # For testing, process only a subset
-        print(f"Total Stocks to Monitor: {len(Stocks_US)}")
-        increment = 25
-        x = 1
-        #Combine all the excel files into one
-        for i in range(0, len(Stocks_US), increment):
-            Monitor_Market(Stocks_US[i:i+increment], Alert_Threshold=3.0, Alerts_Enabled=False, OutputFile=f"Data/Market_Monitor_Summary_{x}.xlsx", db=db)
-            x = x + 1
-
-        combine_excels = []
-        x = 1
-        for i in range(0, len(Stocks_US), increment):
-            file_path = f"Data/Market_Monitor_Summary_{x}.xlsx"
-            x = x + 1
-            if Path(file_path).exists():
-                df = pd.read_excel(file_path)
-                combine_excels.append(df)
-        
-        if combine_excels:
-            final_df = pd.concat(combine_excels, ignore_index=True)
-            final_df.to_excel("Data/Market_Monitor_Summary_Final.xlsx", index=False)    
-            print("Market Monitoring Completed. Summary saved to Data/Market_Monitor_Summary_Final.xlsx")
-        else:
-            print("No summary files found to combine.")
-        
-        db.close()
-    else:
-        print("Failed to connect to database")
+    # Run market monitoring
+    results = Monitor_Market(Alert_Threshold=3.0, Alerts_Enabled=False, Frequency="Daily")
+    
+    # Display results
+    logger.info("=" * 70)
+    logger.info("MONITORING RESULTS")
+    logger.info("=" * 70)
+    
+    # Check for errors
+    if "error" in results:
+        logger.error(f"ERROR: {results['error']}")
+        logger.error("Please ensure:")
+        logger.error("  1. PostgreSQL database is running")
+        logger.error("  2. Database credentials are correct")
+        logger.error("  3. Stocks table is populated")
+        logger.info("=" * 70)
+        exit(1)
+    logger.info("=" * 70)
+    logger.info(f"Total Stocks in Universe: {results['total_stocks']}")
+    logger.info(f"Successfully Processed:   {results['stocks_processed']}")
+    logger.info(f"Skipped (No Data):        {results['stocks_skipped']}")
+    logger.info(f"Alerts Generated:         {results['alerts_generated']}")
+    logger.info(f"End Time:                 {results['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info("=" * 70)
