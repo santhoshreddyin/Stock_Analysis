@@ -1,25 +1,19 @@
 from MCP_Servers.User_Notifications_MCP import send_telegram_message
 from MCP_Servers.yfinance_MCP import get_stock_price,get_historical_data
-from typing import Any, Optional
+from HelperFunctions import to_float
+from Data_Loader import PostgreSQLConnection
+from typing import Any
 import math
 import pandas as pd
 from pathlib import Path
+import os
+from datetime import datetime
 
 #Stock_Universe = Stocks_US 
 
-def to_float(value: Any) -> Optional[float]:
-    """Coerce numpy/pandas scalars/strings into a real Python float."""
-    if value is None:
-        return None
-    try:
-        # numpy/pandas scalar -> python scalar
-        if hasattr(value, "item"):
-            value = value.item()
-        return float(value)
-    except Exception:
-        return None
 
-def Monitor_Market(Stock_Universe: list[str],Alert_Threshold: float = 2.0,Alerts_Enabled: bool = False,OutputFile: str ="Data/Market_Monitor_Summary.xlsx"):
+
+def Monitor_Market(Stock_Universe: list[str], Alert_Threshold: float = 2.0, Alerts_Enabled: bool = False, db: PostgreSQLConnection = None):
     summary_rows: list[dict[str, Any]] = []
     summary_columns = ["Stock", "Current Price", "Volume","50-day MA ", "200-day MA","Target Low","Target High","52 Week Low","52 Week High","Bullish Alert","Recommendation","Sector","Industry","Description"]
 
@@ -33,12 +27,12 @@ def Monitor_Market(Stock_Universe: list[str],Alert_Threshold: float = 2.0,Alerts
         Week52_Low = to_float(Info.get("52 Week Low"))
         Recommendation = Info.get("Recommendation")
         Description = Info.get("Description")
-        histoy = get_historical_data(stock, period="200d")
+        history = get_historical_data(stock, period="200d")
         sector = Info.get("sector")
         industry = Info.get("industry")
         # Load history to pandas DataFrame for easier manipulation
         
-        history_df = pd.DataFrame(histoy)
+        history_df = pd.DataFrame(history)
         if history_df.empty:
             print(f"No historical data for {stock}")
             continue
@@ -65,6 +59,9 @@ def Monitor_Market(Stock_Universe: list[str],Alert_Threshold: float = 2.0,Alerts
                 if Alerts_Enabled:
                     print("Sending Telegram Alert for Bullish Crossover")
                     send_telegram_message(message=message)
+                # Save alert to database
+                if db:
+                    db.add_alert(stock, "Bullish Crossover", message, "Sent")
                 print(message)
             else:
                 print(f"No alert for {stock}. Current Price: {Current_Price}, 50-day MA: {latest_50_MA}, 200-day MA: {latest_200_MA}")
@@ -82,9 +79,25 @@ def Monitor_Market(Stock_Universe: list[str],Alert_Threshold: float = 2.0,Alerts
                 if Alerts_Enabled:
                     print("Sending Telegram Alert for Price Change")
                     send_telegram_message(message=message)
+                # Save alert to database
+                if db:
+                    db.add_alert(stock, "Price Change", message, "Sent")
                 print(message)
             else:
                 print(f"No significant price change for {stock}. Change: {price_change:.1f}%")
+
+        # Update database with stock price data
+        if db:
+            db.update_stock_price(
+                symbol=stock,
+                current_price=Current_Price,
+                recommendation=Recommendation,
+                target_low=Target_Low,
+                target_high=Target_High,
+                week52_low=Week52_Low,
+                week52_high=Week52_High,
+                avg_volume=int(average_volume) if average_volume is not None and not math.isnan(average_volume) else None
+            )
 
         # Append to Summary (no DataFrame.append)
         summary_rows.append({
@@ -107,34 +120,50 @@ def Monitor_Market(Stock_Universe: list[str],Alert_Threshold: float = 2.0,Alerts
     # Write to Excel File
     Path("Data").mkdir(parents=True, exist_ok=True)
     df_summary = pd.DataFrame(summary_rows, columns=summary_columns)
-    df_summary.to_excel(OutputFile, index=False)
+    #df_summary.to_excel(OutputFile, index=False)
 
 
 if __name__ == "__main__":
-    # Read Stock Lists from Data Folder
-    #Stocks_US = ["AAPL", "MSFT", "GOOG", "AMZN", "META"]
-    Stocks_US = pd.read_excel("Data/us_stock_symbols.xlsx")["symbol"].tolist() 
-    #Stocks_US = Stocks_US[:200]  # For testing, process only a subset
-    print(f"Total Stocks to Monitor: {len(Stocks_US)}")
-    increment = 25
-    x = 1
-    #Combine all the excel files into one
-    for i in range(0, len(Stocks_US), increment):
-        Monitor_Market(Stocks_US[i:i+increment],Alert_Threshold=3.0,Alerts_Enabled=False,OutputFile=f"Data/Market_Monitor_Summary_{x}.xlsx")
-        x = x + 1
-
-    combine_excels = []
-    x = 1
-    for i in range(0, len(Stocks_US), increment):
-        file_path = f"Data/Market_Monitor_Summary_{x}.xlsx"
-        x = x + 1
-        if Path(file_path).exists():
-            df = pd.read_excel(file_path)
-            combine_excels.append(df)
+    # Initialize database connection
+    db = PostgreSQLConnection(
+        host=os.getenv("DB_HOST", "localhost"),
+        port=int(os.getenv("DB_PORT", "5432")),
+        database=os.getenv("DB_NAME", "postgres"),
+        user=os.getenv("DB_USER", "postgres"),
+        password=os.getenv("DB_PASSWORD", "postgres")
+    )
     
-    if combine_excels:
-        final_df = pd.concat(combine_excels, ignore_index=True)
-        final_df.to_excel("Data/Market_Monitor_Summary_Final.xlsx", index=False)    
-        print("Market Monitoring Completed. Summary saved to Data/Market_Monitor_Summary_Final.xlsx")
+    if db.connect():
+        db.create_tables()
+        
+        # Read Stock Lists from Data Folder
+        #Stocks_US = ["AAPL", "MSFT", "GOOG", "AMZN", "META"]
+        Stocks_US = pd.read_excel("Data/us_stock_symbols.xlsx")["symbol"].tolist() 
+        #Stocks_US = Stocks_US[:200]  # For testing, process only a subset
+        print(f"Total Stocks to Monitor: {len(Stocks_US)}")
+        increment = 25
+        x = 1
+        #Combine all the excel files into one
+        for i in range(0, len(Stocks_US), increment):
+            Monitor_Market(Stocks_US[i:i+increment], Alert_Threshold=3.0, Alerts_Enabled=False, OutputFile=f"Data/Market_Monitor_Summary_{x}.xlsx", db=db)
+            x = x + 1
+
+        combine_excels = []
+        x = 1
+        for i in range(0, len(Stocks_US), increment):
+            file_path = f"Data/Market_Monitor_Summary_{x}.xlsx"
+            x = x + 1
+            if Path(file_path).exists():
+                df = pd.read_excel(file_path)
+                combine_excels.append(df)
+        
+        if combine_excels:
+            final_df = pd.concat(combine_excels, ignore_index=True)
+            final_df.to_excel("Data/Market_Monitor_Summary_Final.xlsx", index=False)    
+            print("Market Monitoring Completed. Summary saved to Data/Market_Monitor_Summary_Final.xlsx")
+        else:
+            print("No summary files found to combine.")
+        
+        db.close()
     else:
-        print("No summary files found to combine.")
+        print("Failed to connect to database")
