@@ -12,6 +12,10 @@ tavily-python
 openpyxl
 finnhub-python
 sqlalchemy
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pandas>=1.5.0
+psycopg2-binary>=2.9.0
 tweepy
 playwright
 playwright-stealth
