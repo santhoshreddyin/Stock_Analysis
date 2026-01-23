@@ -31,8 +31,8 @@ class NewsArticle(Base):
     published_date = Column(DateTime, nullable=False, index=True)
     collected_date = Column(DateTime, default=datetime.utcnow, nullable=False)
     
-    # Vector embedding for semantic search (1536 dimensions for OpenAI embeddings)
-    embedding = Column(Vector(1536))
+    # Vector embedding for semantic search (384 dimensions for sentence-transformers)
+    embedding = Column(Vector(384))
     
     # Sentiment and relevance scores
     sentiment_score = Column(Float)  # -1 (negative) to 1 (positive)
@@ -63,8 +63,8 @@ class GraphEntity(Base):
     # For stock symbols if entity is a company
     symbol = Column(String(15), index=True)
     
-    # Vector embedding for entity similarity
-    embedding = Column(Vector(1536))
+    # Vector embedding for entity similarity (384 dimensions)
+    embedding = Column(Vector(384))
     
     # Metadata
     properties = Column(JSON)  # Store additional properties
