@@ -97,6 +97,8 @@ jobs:
     name: Deploy to Kubernetes
     runs-on: self-hosted
     needs: build-and-push-images
+    permissions:
+      contents: read
     environment: 
       name: ${{ github.event.inputs.environment || 'production' }}
 

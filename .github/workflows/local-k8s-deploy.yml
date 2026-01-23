@@ -3,10 +3,15 @@ name: Build Docker Images (Local)
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-local:
     name: Build Docker Images for Local K8s
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
     - name: Checkout code
@@ -53,6 +58,8 @@ jobs:
     name: Deploy to Local Kubernetes
     runs-on: self-hosted
     needs: build-local
+    permissions:
+      contents: read
     
     steps:
     - name: Checkout code
