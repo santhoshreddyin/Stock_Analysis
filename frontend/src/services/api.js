@@ -54,6 +54,42 @@ export const stockAPI = {
     const response = await api.get('/api/sectors');
     return response.data;
   },
+
+  // News and Graph APIs
+
+  // Get news articles
+  getNewsArticles: async (symbol = null, source = null, limit = 20) => {
+    const response = await api.get('/api/news', {
+      params: { symbol, source, limit },
+    });
+    return response.data;
+  },
+
+  // Search news with semantic search
+  searchNews: async (query, symbol = null, limit = 10) => {
+    const response = await api.post('/api/news/search', {
+      query,
+      symbol,
+      limit,
+    });
+    return response.data;
+  },
+
+  // Get news summaries
+  getNewsSummaries: async (symbol, period = 'daily', limit = 5) => {
+    const response = await api.get(`/api/news/summary/${symbol}`, {
+      params: { period, limit },
+    });
+    return response.data;
+  },
+
+  // Get graph data for visualization
+  getGraphData: async (symbol = null, entity_type = null, limit = 100) => {
+    const response = await api.get('/api/graph', {
+      params: { symbol, entity_type, limit },
+    });
+    return response.data;
+  },
 };
 
 export default api;

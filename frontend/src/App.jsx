@@ -2,6 +2,8 @@ import { useState } from 'react';
 import Dashboard from './components/Dashboard';
 import StockList from './components/StockList';
 import StockDetail from './components/StockDetail';
+import GraphView from './components/GraphView';
+import NewsSummary from './components/NewsSummary';
 import './App.css';
 
 function App() {
@@ -40,6 +42,18 @@ function App() {
           >
             Stock List
           </button>
+          <button
+            className={currentView === 'graph' ? 'active' : ''}
+            onClick={() => setCurrentView('graph')}
+          >
+            Entity Graph
+          </button>
+          <button
+            className={currentView === 'news' ? 'active' : ''}
+            onClick={() => setCurrentView('news')}
+          >
+            News Analysis
+          </button>
         </nav>
       </header>
 
@@ -48,6 +62,19 @@ function App() {
         {currentView === 'stocks' && <StockList onSelectStock={handleSelectStock} />}
         {currentView === 'detail' && selectedStock && (
           <StockDetail symbol={selectedStock} onBack={handleBackToList} />
+        )}
+        {currentView === 'graph' && <GraphView symbol={selectedStock} />}
+        {currentView === 'news' && (
+          <div>
+            {!selectedStock ? (
+              <div className="select-stock-prompt">
+                <p>Select a stock from the Stock List to view news analysis</p>
+                <button onClick={() => setCurrentView('stocks')}>Go to Stock List</button>
+              </div>
+            ) : (
+              <NewsSummary symbol={selectedStock} />
+            )}
+          </div>
         )}
       </main>
 

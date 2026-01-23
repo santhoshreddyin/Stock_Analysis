@@ -77,6 +77,41 @@ body {
   font-size: 0.9rem;
 }
 
+.select-stock-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 40px;
+  text-align: center;
+}
+
+.select-stock-prompt p {
+  font-size: 18px;
+  color: #64748b;
+  margin-bottom: 20px;
+}
+
+.select-stock-prompt button {
+  padding: 12px 24px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.select-stock-prompt button:hover {
+  background: #2563eb;
+}
+
 @media (max-width: 768px) {
   .app-header {
     padding: 15px 20px;
