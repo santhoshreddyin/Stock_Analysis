@@ -132,7 +132,7 @@ const StockDetail = ({ symbol, onBack }) => {
           </div>
           <div className="info-item">
             <span className="label">Recommendation:</span>
-            <span className={`value recommendation ${stockDetail.recommendation?.toLowerCase()}`}>
+            <span className={`value recommendation ${stockDetail.recommendation?.replace(/\s+/g, '-').toLowerCase()}`}>
               {stockDetail.recommendation || 'N/A'}
             </span>
           </div>

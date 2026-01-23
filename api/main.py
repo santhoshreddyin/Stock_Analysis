@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
 from datetime import datetime
+from contextlib import asynccontextmanager
 import sys
 import os
 
@@ -15,11 +16,30 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Data_Loader import PostgreSQLConnection, Stock_List, StockPrice, Stock_History
 from api.models import StockListResponse, StockDetailResponse, KeyParametersResponse, StockHistoryResponse
 
-# Initialize FastAPI app
+# Database connection (initialized on startup)
+db: Optional[PostgreSQLConnection] = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan - startup and shutdown"""
+    global db
+    # Startup
+    db = PostgreSQLConnection.create_connection()
+    print("✓ Database connection established")
+    yield
+    # Shutdown
+    if db:
+        db.close()
+        print("✓ Database connection closed")
+
+
+# Initialize FastAPI app with lifespan
 app = FastAPI(
     title="Stock Analysis API",
     description="REST API for accessing stock analysis data and key parameters",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Configure CORS for React frontend
@@ -30,26 +50,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Database connection (initialized on startup)
-db: Optional[PostgreSQLConnection] = None
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database connection on startup"""
-    global db
-    db = PostgreSQLConnection.create_connection()
-    print("✓ Database connection established")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Close database connection on shutdown"""
-    global db
-    if db:
-        db.close()
-        print("✓ Database connection closed")
 
 
 @app.get("/")
@@ -89,11 +89,11 @@ async def get_stocks(
     """
     Get list of stocks with basic information
     """
+    session = db.get_session()
+    if not session:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
     try:
-        session = db.get_session()
-        if not session:
-            raise HTTPException(status_code=500, detail="Database connection failed")
-        
         query = session.query(Stock_List)
         
         # Apply filters
@@ -115,10 +115,11 @@ async def get_stocks(
             for stock in stocks
         ]
         
-        session.close()
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching stocks: {str(e)}")
+    finally:
+        session.close()
 
 
 @app.get("/api/stocks/{symbol}", response_model=StockDetailResponse)
@@ -126,15 +127,14 @@ async def get_stock_detail(symbol: str):
     """
     Get detailed information for a specific stock including current price data
     """
+    session = db.get_session()
+    if not session:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
     try:
-        session = db.get_session()
-        if not session:
-            raise HTTPException(status_code=500, detail="Database connection failed")
-        
         # Get stock basic info
         stock = session.query(Stock_List).filter_by(symbol=symbol.upper()).first()
         if not stock:
-            session.close()
             raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
         
         # Get current price data
@@ -157,12 +157,9 @@ async def get_stock_detail(symbol: str):
             last_updated=price_data.Update_Timestamp if price_data else None
         )
         
-        session.close()
         return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching stock details: {str(e)}")
+    finally:
+        session.close()
 
 
 @app.get("/api/key-parameters", response_model=KeyParametersResponse)
@@ -170,11 +167,11 @@ async def get_key_parameters():
     """
     Get key parameters and statistics across all stocks
     """
+    session = db.get_session()
+    if not session:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
     try:
-        session = db.get_session()
-        if not session:
-            raise HTTPException(status_code=500, detail="Database connection failed")
-        
         # Count total stocks
         total_stocks = session.query(Stock_List).count()
         
@@ -220,10 +217,11 @@ async def get_key_parameters():
             last_updated=datetime.utcnow()
         )
         
-        session.close()
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching key parameters: {str(e)}")
+    finally:
+        session.close()
 
 
 @app.get("/api/stocks/{symbol}/history", response_model=List[StockHistoryResponse])
@@ -234,15 +232,14 @@ async def get_stock_history(
     """
     Get historical price data for a specific stock
     """
+    session = db.get_session()
+    if not session:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
     try:
-        session = db.get_session()
-        if not session:
-            raise HTTPException(status_code=500, detail="Database connection failed")
-        
         # Check if stock exists
         stock = session.query(Stock_List).filter_by(symbol=symbol.upper()).first()
         if not stock:
-            session.close()
             raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
         
         # Get historical data
@@ -262,12 +259,9 @@ async def get_stock_history(
             for record in history
         ]
         
-        session.close()
         return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching stock history: {str(e)}")
+    finally:
+        session.close()
 
 
 @app.get("/api/sectors")
@@ -275,21 +269,22 @@ async def get_sectors():
     """
     Get list of all unique sectors
     """
+    session = db.get_session()
+    if not session:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
     try:
-        session = db.get_session()
-        if not session:
-            raise HTTPException(status_code=500, detail="Database connection failed")
-        
         sectors = session.query(Stock_List.sector).distinct().filter(
             Stock_List.sector.isnot(None)
         ).all()
         
         result = {"sectors": sorted([s[0] for s in sectors if s[0]])}
         
-        session.close()
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching sectors: {str(e)}")
+    finally:
+        session.close()
 
 
 if __name__ == "__main__":

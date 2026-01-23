@@ -93,7 +93,7 @@
 }
 
 .recommendation.buy,
-.recommendation.strong.buy {
+.recommendation.strong-buy {
   background: #e8f5e9;
   color: #2e7d32;
 }
@@ -104,7 +104,7 @@
 }
 
 .recommendation.sell,
-.recommendation.strong.sell {
+.recommendation.strong-sell {
   background: #ffebee;
   color: #c62828;
 }
