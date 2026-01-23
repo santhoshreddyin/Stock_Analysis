@@ -11,7 +11,23 @@ frontend/.vite/
 
 # Environment
 .env
+.env.local
+.env.*.local
 
 # IDE
 .vscode/
 .idea/
+
+# Docker
+*.log
+.dockerignore.bak
+
+# Kubernetes
+k8s/secrets.yaml.bak
+*.kubeconfig
+
+# Build artifacts
+dist/
+build/
+__pycache__/
+*.egg-info/

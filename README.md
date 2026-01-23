@@ -2,6 +2,32 @@
 
 An intelligent stock analysis system powered by AI agents that provides comprehensive fundamental, technical, and news analysis of stocks.
 
+## 🚀 Quick Start
+
+### Option 1: Docker Compose (Recommended for Development)
+```bash
+# Copy environment template and configure
+cp .env.example .env
+# Edit .env with your API keys
+
+# Start all services
+docker compose up -d
+
+# Access the application
+# Frontend: http://localhost
+# Backend API: http://localhost:8000
+# API Docs: http://localhost:8000/docs
+```
+
+### Option 2: Kubernetes (Production Deployment)
+```bash
+# See QUICKSTART.md for detailed instructions
+cd k8s
+./deploy.sh
+```
+
+📚 **Full deployment guides**: [QUICKSTART.md](QUICKSTART.md) | [CICD_DOCUMENTATION.md](CICD_DOCUMENTATION.md)
+
 ## Features
 
 ### Multi-Agent Analysis System
@@ -154,6 +180,30 @@ The system uses Model Context Protocol (MCP) servers to provide tools to agents:
 - **AgentMemory/** - Stores analysis reports and agent notes
 - **PostgreSQL Database** - Caches historical stock data for faster retrieval
 
+## Deployment & CI/CD
+
+### GitHub Actions Pipeline
+
+This project includes a complete CI/CD pipeline for automated deployment:
+
+- **CI Workflow**: Automated linting, testing, and security scanning
+- **CD Workflow**: Docker image building and Kubernetes deployment
+- **Local K8s**: Support for deployment to local Kubernetes clusters
+
+### Deployment Options
+
+1. **Docker Compose** - Quick local development setup
+2. **Kubernetes** - Production-ready deployment with:
+   - Auto-scaling backend and frontend
+   - StatefulSet PostgreSQL with persistent storage
+   - Nginx Ingress for routing
+   - Health checks and resource limits
+
+📚 **Deployment Documentation**:
+- [Quick Start Guide](QUICKSTART.md) - Get up and running in minutes
+- [CI/CD Documentation](CICD_DOCUMENTATION.md) - Complete pipeline guide
+- [Kubernetes Guide](k8s/README.md) - K8s deployment details
+
 ## Configuration
 
 Key environment variables:
@@ -168,12 +218,15 @@ Key environment variables:
 | `OPENAI_MODEL` | No | OpenAI model to use (default: gpt-5-nano) |
 | `OPENAI_MAX_TOKENS` | No | Max tokens per request (default: 6000) |
 
+Copy `.env.example` to `.env` and fill in your values.
+
 ## Security
 
 - Never commit API keys or tokens to version control
-- Use environment variables or secure secret management
+- Use environment variables or secure secret management (e.g., Kubernetes Secrets)
 - Rotate API tokens periodically
 - Monitor API usage in respective dashboards
+- Security scanning included in CI pipeline (Trivy)
 
 ## Contributing
 
