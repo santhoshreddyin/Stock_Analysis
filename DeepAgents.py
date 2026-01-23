@@ -2,6 +2,7 @@ import os
 import sys
 import argparse
 import asyncio
+import logging
 from rich import print
 from typing import Literal
 from HelperFunctions import _require_env
@@ -17,6 +18,8 @@ from deepagents.backends import FilesystemBackend
 langfuse_handler = CallbackHandler()
 import httpx
 import anyio
+
+logger = logging.getLogger(__name__)
 
 # Helper Functions
 def _int_env(name: str, default: int) -> int:
@@ -155,6 +158,7 @@ def read_report_file(file_path: str) -> str:
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 _YFINANCE_MCP_PATH = os.path.join(_PROJECT_ROOT, "MCP_Servers", "yfinance_MCP.py")
+_TWITTER_MCP_PATH = os.path.join(_PROJECT_ROOT, "MCP_Servers", "twitter_MCP.py")
 _PLAYWRIGHT_MCP_PATH = os.path.join(_PROJECT_ROOT, "MCP_Servers", "playwright_MCP.py")
 
 def _mcp_env() -> dict[str, str]:
@@ -177,7 +181,8 @@ client = MultiServerMCPClient(
             "env": _mcp_env(),
         },
     }
-)
+
+client = MultiServerMCPClient(_mcp_servers)
 
 async def _open_yfinance_session():
     if not os.path.exists(_YFINANCE_MCP_PATH):
@@ -190,6 +195,18 @@ async def _open_yfinance_session():
             f"Try running it directly to see the real error:\n  {sys.executable} {_YFINANCE_MCP_PATH}"
         ) from e
 
+async def _open_twitter_session():
+    if not os.path.exists(_TWITTER_MCP_PATH):
+        raise FileNotFoundError(f"twitter MCP not found at: {_TWITTER_MCP_PATH}")
+    if not os.getenv("TWITTER_BEARER_TOKEN"):
+        logger.warning("TWITTER_BEARER_TOKEN not set, Twitter tools will not be available")
+        return None
+    try:
+        return client.session("twitter_MCP")
+    except anyio.BrokenResourceError as e:
+        raise RuntimeError(
+            "MCP stdio channel broke. The twitter MCP server likely crashed.\n"
+            f"Try running it directly to see the real error:\n  {sys.executable} {_TWITTER_MCP_PATH}"
 async def _open_playwright_session():
     if not os.path.exists(_PLAYWRIGHT_MCP_PATH):
         raise FileNotFoundError(f"Playwright MCP not found at: {_PLAYWRIGHT_MCP_PATH}")
@@ -215,6 +232,19 @@ async def main(args: argparse.Namespace) -> None:
     )
     
     try:
+        # Open yfinance session
+        async with (await _open_yfinance_session()) as yfinance_session:
+            tools = await load_mcp_tools(yfinance_session)
+            
+            # Try to load Twitter tools if available
+            news_analyst_tools = [internet_search]
+            twitter_session_ctx = await _open_twitter_session()
+            
+            if twitter_session_ctx:
+                async with twitter_session_ctx as twitter_session:
+                    twitter_tools = await load_mcp_tools(twitter_session)
+                    news_analyst_tools.extend(twitter_tools)
+                    logger.info(f"Loaded {len(twitter_tools)} Twitter tools for News_Analyst")
         async with (await _open_yfinance_session()) as yfinance_session, \
                    (await _open_playwright_session()) as playwright_session:
             yfinance_tools = await load_mcp_tools(yfinance_session)
