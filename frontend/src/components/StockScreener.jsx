@@ -3,7 +3,7 @@
  * Screen and filter stocks with advanced options
  */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { stockAPI } from '../services/api';
 import './StockScreener.css';

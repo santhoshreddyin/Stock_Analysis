@@ -3,7 +3,6 @@
  * Main layout with top frame and left navigation bar
  */
 
-import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Layout.css';
 

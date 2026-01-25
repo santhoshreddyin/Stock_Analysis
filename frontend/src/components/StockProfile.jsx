@@ -3,7 +3,7 @@
  * Detailed view of a specific stock
  */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { stockAPI } from '../services/api';
 import './StockProfile.css';
