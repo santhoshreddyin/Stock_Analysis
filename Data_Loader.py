@@ -3,8 +3,10 @@ from sqlalchemy.orm import declarative_base, sessionmaker, Session
 import os
 from typing import List, Optional, Type
 from datetime import datetime
+import logging
 
 Base = declarative_base()
+logger = logging.getLogger(__name__)
 
 
 class Stock_List(Base):
@@ -173,6 +175,15 @@ class PostgreSQLConnection:
             return False
         
         try:
+            # Enable pgvector extension for vector operations
+            with self.engine.connect() as connection:
+                try:
+                    connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                    connection.commit()
+                    logger.info("✓ pgvector extension enabled")
+                except Exception as e:
+                    logger.warning(f"Could not enable pgvector extension: {e}")
+            
             Base.metadata.create_all(self.engine)
             print("✓ Database tables created successfully")
             return True

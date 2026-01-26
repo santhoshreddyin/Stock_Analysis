@@ -14,7 +14,13 @@ import os
 # Add parent directory to path to import Data_Loader
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Data_Loader import PostgreSQLConnection, Stock_List, StockPrice, Stock_History
-from api.models import StockListResponse, StockDetailResponse, KeyParametersResponse, StockHistoryResponse
+from NewsGraphModels import NewsArticle, NewsSummary
+from NewsProcessingService import get_news_service
+from api.models import (
+    StockListResponse, StockDetailResponse, KeyParametersResponse, 
+    StockHistoryResponse, NewsArticleResponse, GraphDataResponse,
+    NewsSummaryResponse, NewsSearchRequest
+)
 
 # Database connection (initialized on startup)
 db: Optional[PostgreSQLConnection] = None
@@ -62,7 +68,11 @@ async def root():
             "stocks": "/api/stocks",
             "stock_detail": "/api/stocks/{symbol}",
             "key_parameters": "/api/key-parameters",
-            "stock_history": "/api/stocks/{symbol}/history"
+            "stock_history": "/api/stocks/{symbol}/history",
+            "news_articles": "/api/news",
+            "news_search": "/api/news/search",
+            "news_summary": "/api/news/summary/{symbol}",
+            "graph_data": "/api/graph"
         }
     }
 
@@ -283,6 +293,172 @@ async def get_sectors():
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching sectors: {str(e)}")
+    finally:
+        session.close()
+
+
+# News and Graph API Endpoints
+
+@app.get("/api/news", response_model=List[NewsArticleResponse])
+async def get_news_articles(
+    symbol: Optional[str] = Query(None, description="Filter by stock symbol"),
+    source: Optional[str] = Query(None, description="Filter by source"),
+    limit: int = Query(20, ge=1, le=100, description="Number of articles to return")
+):
+    """
+    Get news articles with optional filters
+    """
+    session = db.get_session()
+    if not session:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    try:
+        query = session.query(NewsArticle)
+        
+        if symbol:
+            query = query.filter(NewsArticle.symbol == symbol.upper())
+        if source:
+            query = query.filter(NewsArticle.source == source)
+        
+        articles = query.order_by(NewsArticle.published_date.desc()).limit(limit).all()
+        
+        return [
+            NewsArticleResponse(
+                id=article.id,
+                article_id=article.article_id,
+                symbol=article.symbol,
+                title=article.title,
+                content=article.content,
+                source=article.source,
+                url=article.url,
+                author=article.author,
+                published_date=article.published_date,
+                collected_date=article.collected_date,
+                sentiment_score=article.sentiment_score,
+                relevance_score=article.relevance_score,
+                metadata=article.metadata_
+            )
+            for article in articles
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching news: {str(e)}")
+    finally:
+        session.close()
+
+
+@app.post("/api/news/search", response_model=List[NewsArticleResponse])
+async def search_news(request: NewsSearchRequest):
+    """
+    Semantic search for news articles using vector embeddings
+    """
+    session = db.get_session()
+    if not session:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    try:
+        news_service = get_news_service()
+        articles = news_service.semantic_search(
+            session=session,
+            query=request.query,
+            symbol=request.symbol,
+            limit=request.limit
+        )
+        
+        return [
+            NewsArticleResponse(
+                id=article.id,
+                article_id=article.article_id,
+                symbol=article.symbol,
+                title=article.title,
+                content=article.content,
+                source=article.source,
+                url=article.url,
+                author=article.author,
+                published_date=article.published_date,
+                collected_date=article.collected_date,
+                sentiment_score=article.sentiment_score,
+                relevance_score=article.relevance_score,
+                metadata=article.metadata_
+            )
+            for article in articles
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error searching news: {str(e)}")
+    finally:
+        session.close()
+
+
+@app.get("/api/news/summary/{symbol}", response_model=List[NewsSummaryResponse])
+async def get_news_summary(
+    symbol: str,
+    period: Optional[str] = Query("daily", description="Summary period (daily, weekly, monthly)"),
+    limit: int = Query(5, ge=1, le=50, description="Number of summaries to return")
+):
+    """
+    Get news summaries for a stock
+    """
+    session = db.get_session()
+    if not session:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    try:
+        query = session.query(NewsSummary).filter(
+            NewsSummary.symbol == symbol.upper()
+        )
+        
+        if period:
+            query = query.filter(NewsSummary.period == period)
+        
+        summaries = query.order_by(NewsSummary.summary_date.desc()).limit(limit).all()
+        
+        return [
+            NewsSummaryResponse(
+                id=summary.id,
+                symbol=summary.symbol,
+                summary_date=summary.summary_date,
+                period=summary.period,
+                summary_text=summary.summary_text,
+                key_events=summary.key_events,
+                sentiment_trend=summary.sentiment_trend,
+                overall_sentiment_score=summary.overall_sentiment_score,
+                article_count=summary.article_count
+            )
+            for summary in summaries
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching summaries: {str(e)}")
+    finally:
+        session.close()
+
+
+@app.get("/api/graph", response_model=GraphDataResponse)
+async def get_graph_data(
+    symbol: Optional[str] = Query(None, description="Filter by stock symbol"),
+    entity_type: Optional[str] = Query(None, description="Filter by entity type"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum entities to return")
+):
+    """
+    Get graph data (nodes and edges) for visualization
+    """
+    session = db.get_session()
+    if not session:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    try:
+        news_service = get_news_service()
+        graph_data = news_service.get_entity_graph(
+            session=session,
+            symbol=symbol,
+            entity_type=entity_type,
+            limit=limit
+        )
+        
+        return GraphDataResponse(
+            nodes=graph_data['nodes'],
+            edges=graph_data['edges']
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching graph data: {str(e)}")
     finally:
         session.close()
 

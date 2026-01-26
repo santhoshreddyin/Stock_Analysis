@@ -82,6 +82,10 @@ def internet_search(
     )
 
 
+# News Database Tools
+from news_database_tools import save_news_to_database, create_news_summary
+
+
 # MCP Tool: Send Email via Gmail SMTP
 import smtplib
 from email.message import EmailMessage
@@ -268,7 +272,7 @@ async def main(args: argparse.Namespace) -> None:
             {
                 "model": model,
                 "name": "News_Analyst",
-                "description": "Gathers latest news and updates on stocks using web scraping and search",
+                "description": "Gathers latest news and updates on stocks using web scraping and search, and stores them in the database",
                 "system_prompt": """Analyze the Recent Stock News and summarize the important events impacting the stock price.
                 
                 You have access to:
@@ -279,9 +283,20 @@ async def main(args: argparse.Namespace) -> None:
                   * navigate_to_url: Navigate to a URL and get basic info
                   * extract_links: Extract all links from a page
                   * take_screenshot: Capture screenshots of web pages
+                - save_news_to_database: Save news articles with vector embeddings and entity extraction
+                - create_news_summary: Create aggregated summaries of news analysis
+                
+                IMPORTANT: After gathering and analyzing news:
+                1. Use save_news_to_database to store each significant news article you find
+                2. Use create_news_summary to create an aggregated summary of your analysis
+                
+                This data will be used for:
+                - Vector database for semantic search (RAG)
+                - Graph database showing relationships between entities
+                - Frontend visualization of news and insights
                 
                 Use internet_search to find relevant news sources, then use scrape_news_article or scrape_page_content to extract detailed information from those sources.""",
-                "tools": [internet_search] + playwright_tools,
+                "tools": [internet_search, save_news_to_database, create_news_summary] + playwright_tools,
             },
             {
                 "model": model,
