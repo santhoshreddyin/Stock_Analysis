@@ -1,0 +1,203 @@
+name: CD - Continuous Deployment
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  IMAGE_NAME_BACKEND: ${{ secrets.DOCKERHUB_USERNAME }}/stock-backend
+  IMAGE_NAME_FRONTEND: ${{ secrets.DOCKERHUB_USERNAME }}/stock-frontend
+
+jobs:
+  build-and-push-images:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Extract metadata for Backend
+      id: meta-backend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.IMAGE_NAME_BACKEND }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Backend image
+      id: build-backend
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.backend
+        push: true
+        tags: ${{ steps.meta-backend.outputs.tags }}
+        labels: ${{ steps.meta-backend.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Run Trivy vulnerability scanner on Backend image
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.IMAGE_NAME_BACKEND }}:latest
+        format: 'sarif'
+        output: 'trivy-backend-results.sarif'
+
+    - name: Upload Trivy results for Backend to GitHub Security
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-backend-results.sarif'
+        category: 'backend-image'
+
+    - name: Extract metadata for Frontend
+      id: meta-frontend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.IMAGE_NAME_FRONTEND }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Frontend image
+      id: build-frontend
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.frontend
+        push: true
+        tags: ${{ steps.meta-frontend.outputs.tags }}
+        labels: ${{ steps.meta-frontend.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Run Trivy vulnerability scanner on Frontend image
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.IMAGE_NAME_FRONTEND }}:latest
+        format: 'sarif'
+        output: 'trivy-frontend-results.sarif'
+
+    - name: Upload Trivy results for Frontend to GitHub Security
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-frontend-results.sarif'
+        category: 'frontend-image'
+
+    outputs:
+      backend-image: ${{ env.IMAGE_NAME_BACKEND }}:latest
+      frontend-image: ${{ env.IMAGE_NAME_FRONTEND }}:latest
+
+  deploy-to-kubernetes:
+    name: Deploy to Kubernetes
+    runs-on: self-hosted
+    needs: build-and-push-images
+    permissions:
+      contents: read
+    environment: 
+      name: ${{ github.event.inputs.environment || 'production' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+
+    - name: Configure kubectl
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+
+    - name: Update Kubernetes secrets from GitHub Secrets
+      run: |
+        kubectl create secret generic backend-secret \
+          --from-literal=OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+          --from-literal=TAVILY_API_KEY="${{ secrets.TAVILY_API_KEY }}" \
+          --from-literal=GMAIL_SMTP_USER="${{ secrets.GMAIL_SMTP_USER }}" \
+          --from-literal=GMAIL_APP_PASSWORD="${{ secrets.GMAIL_APP_PASSWORD }}" \
+          --from-literal=TWITTER_BEARER_TOKEN="${{ secrets.TWITTER_BEARER_TOKEN }}" \
+          --namespace=stock-analysis \
+          --dry-run=client -o yaml | kubectl apply -f -
+        
+        kubectl create secret generic postgres-secret \
+          --from-literal=POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}" \
+          --namespace=stock-analysis \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Deploy to Kubernetes
+      env:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        CI: true
+      run: |
+        cd k8s
+        # Use deploy.sh which handles envsubst and applies all resources
+        ./deploy.sh
+
+    - name: Wait for rollout
+      run: |
+        kubectl rollout status deployment/backend -n stock-analysis --timeout=5m
+        kubectl rollout status deployment/frontend -n stock-analysis --timeout=5m
+
+    - name: Verify deployment
+      run: |
+        kubectl get pods -n stock-analysis
+        kubectl get services -n stock-analysis
+        kubectl get ingress -n stock-analysis
+
+    - name: Run smoke tests
+      run: |
+        # Wait for services to be ready
+        sleep 30
+        
+        # Get the ingress IP
+        INGRESS_IP=$(kubectl get ingress stock-analysis-ingress -n stock-analysis -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+        
+        if [ -z "$INGRESS_IP" ]; then
+          echo "Warning: Ingress IP not available yet"
+          INGRESS_IP="localhost"
+        fi
+        
+        # Test backend health
+        kubectl run curl-test --image=curlimages/curl:latest --rm -i --restart=Never --namespace=stock-analysis -- \
+          curl -f http://backend-service:8000/api/health || echo "Backend health check failed"
+        
+        echo "Deployment completed successfully!"

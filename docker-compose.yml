@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: stock-postgres
+    environment:
+      POSTGRES_DB: stockdb
+      POSTGRES_USER: stockuser
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stockpassword}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stockuser -d stockdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: stock-backend
+    environment:
+      - DATABASE_URL=postgresql://stockuser:${POSTGRES_PASSWORD:-stockpassword}@postgres:5432/stockdb
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - GMAIL_SMTP_USER=${GMAIL_SMTP_USER}
+      - GMAIL_APP_PASSWORD=${GMAIL_APP_PASSWORD}
+      - TWITTER_BEARER_TOKEN=${TWITTER_BEARER_TOKEN}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: stock-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

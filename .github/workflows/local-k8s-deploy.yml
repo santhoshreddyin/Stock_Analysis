@@ -1,0 +1,103 @@
+name: Build Docker Images (Local)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-local:
+    name: Build Docker Images for Local K8s
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Backend Image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.backend
+        tags: stock-backend:latest
+        outputs: type=docker,dest=/tmp/backend-image.tar
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Build Frontend Image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.frontend
+        tags: stock-frontend:latest
+        outputs: type=docker,dest=/tmp/frontend-image.tar
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Upload Backend Image
+      uses: actions/upload-artifact@v4
+      with:
+        name: backend-image
+        path: /tmp/backend-image.tar
+        retention-days: 1
+
+    - name: Upload Frontend Image
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-image
+        path: /tmp/frontend-image.tar
+        retention-days: 1
+
+  deploy-local:
+    name: Deploy to Local Kubernetes
+    runs-on: self-hosted
+    needs: build-local
+    permissions:
+      contents: read
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download Backend Image
+      uses: actions/download-artifact@v4.1.3
+      with:
+        name: backend-image
+        path: /tmp
+
+    - name: Download Frontend Image
+      uses: actions/download-artifact@v4.1.3
+      with:
+        name: frontend-image
+        path: /tmp
+
+    - name: Load Docker images
+      run: |
+        docker load -i /tmp/backend-image.tar
+        docker load -i /tmp/frontend-image.tar
+
+    - name: Tag images for local registry (if using one)
+      run: |
+        # If you have a local registry, tag and push
+        # docker tag stock-backend:latest localhost:5000/stock-backend:latest
+        # docker push localhost:5000/stock-backend:latest
+        # docker tag stock-frontend:latest localhost:5000/stock-frontend:latest
+        # docker push localhost:5000/stock-frontend:latest
+        echo "Images loaded and ready for Kubernetes"
+
+    - name: Deploy to Kubernetes
+      run: |
+        cd k8s
+        chmod +x deploy.sh
+        ./deploy.sh
+
+    - name: Verify deployment
+      run: |
+        kubectl get all -n stock-analysis
+        kubectl describe ingress stock-analysis-ingress -n stock-analysis

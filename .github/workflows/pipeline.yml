@@ -1,0 +1,31 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  packages: write
+
+jobs:
+  ci:
+    name: Continuous Integration
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/ci.yml
+
+  cd:
+    name: Continuous Deployment
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: ci
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/cd.yml
+    secrets: inherit

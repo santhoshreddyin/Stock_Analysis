@@ -1,0 +1,275 @@
+/**
+ * StockProfile Styles
+ */
+
+.stock-profile {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.profile-header {
+  margin-bottom: 30px;
+}
+
+.back-button {
+  background: #667eea;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  margin-bottom: 20px;
+}
+
+.back-button:hover {
+  background: #5568d3;
+  transform: translateX(-4px);
+}
+
+.stock-title-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.stock-title {
+  font-size: 2rem;
+  color: #333;
+  margin: 0;
+}
+
+.current-price-display {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #2ecc71;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.info-card, .description-card, .history-card {
+  background: white;
+  border-radius: 12px;
+  padding: 25px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.card-title {
+  font-size: 1.2rem;
+  color: #333;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.info-items {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.info-label {
+  font-weight: 600;
+  color: #666;
+  font-size: 0.95rem;
+}
+
+.info-value {
+  font-weight: 500;
+  color: #333;
+  font-size: 1rem;
+  text-align: right;
+}
+
+.price-value {
+  color: #2ecc71;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.recommendation {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.recommendation.strong-buy {
+  background: #d4edda;
+  color: #155724;
+}
+
+.recommendation.buy {
+  background: #d1ecf1;
+  color: #0c5460;
+}
+
+.recommendation.hold {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.recommendation.sell {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.description-card {
+  margin-bottom: 30px;
+}
+
+.description-text {
+  color: #555;
+  line-height: 1.7;
+  font-size: 1rem;
+}
+
+.history-card {
+  margin-bottom: 30px;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.history-table th {
+  background: #f8f9fa;
+  color: #333;
+  font-weight: 600;
+  padding: 12px;
+  text-align: left;
+  border-bottom: 2px solid #dee2e6;
+  font-size: 0.9rem;
+}
+
+.history-table td {
+  padding: 12px;
+  border-bottom: 1px solid #dee2e6;
+  color: #555;
+  font-size: 0.9rem;
+}
+
+.history-table tbody tr:hover {
+  background: #f8f9fa;
+}
+
+.loading {
+  text-align: center;
+  padding: 60px 20px;
+  font-size: 1.2rem;
+  color: #666;
+}
+
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 40px 20px;
+}
+
+.error-message {
+  background: #fee;
+  color: #c33;
+  padding: 15px 20px;
+  border-radius: 8px;
+  border-left: 4px solid #c33;
+  width: 100%;
+  max-width: 600px;
+}
+
+.no-stock-selected {
+  text-align: center;
+  padding: 60px 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.no-stock-selected h2 {
+  font-size: 1.8rem;
+  color: #333;
+  margin-bottom: 15px;
+}
+
+.no-stock-selected p {
+  font-size: 1.1rem;
+  color: #666;
+  margin-bottom: 25px;
+}
+
+.btn-primary, .btn-secondary {
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  border: none;
+}
+
+.btn-primary {
+  background: #667eea;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #5568d3;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.btn-secondary {
+  background: #6c757d;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background: #5a6268;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .stock-title {
+    font-size: 1.5rem;
+  }
+
+  .current-price-display {
+    font-size: 2rem;
+  }
+
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .info-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+
+  .info-value {
+    text-align: left;
+  }
+}

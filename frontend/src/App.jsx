@@ -4,27 +4,13 @@ import StockList from './components/StockList';
 import StockDetail from './components/StockDetail';
 import GraphView from './components/GraphView';
 import NewsSummary from './components/NewsSummary';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Layout from './components/Layout';
+import StockScreener from './components/StockScreener';
+import StockProfile from './components/StockProfile';
 import './App.css';
 
 function App() {
-  const [currentView, setCurrentView] = useState('dashboard');
-  const [selectedStock, setSelectedStock] = useState(null);
-
-  const handleSelectStock = (symbol) => {
-    setSelectedStock(symbol);
-    setCurrentView('detail');
-  };
-
-  const handleBackToList = () => {
-    setCurrentView('stocks');
-    setSelectedStock(null);
-  };
-
-  const handleBackToDashboard = () => {
-    setCurrentView('dashboard');
-    setSelectedStock(null);
-  };
-
   return (
     <div className="app">
       <header className="app-header">
@@ -82,6 +68,15 @@ function App() {
         <p>© 2026 Stock Analysis System | Powered by FastAPI & React</p>
       </footer>
     </div>
+    <Router>
+      <Layout>
+        <Routes>
+          <Route path="/" element={<StockScreener />} />
+          <Route path="/profile" element={<StockProfile />} />
+          <Route path="/profile/:symbol" element={<StockProfile />} />
+        </Routes>
+      </Layout>
+    </Router>
   );
 }
 
