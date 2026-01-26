@@ -16,6 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Data_Loader import PostgreSQLConnection, Stock_List, StockPrice, Stock_History
 from NewsGraphModels import NewsArticle, NewsSummary
 from NewsProcessingService import get_news_service
+from StockDataModels import StockNote
 from api.models import (
     StockListResponse, StockDetailResponse, KeyParametersResponse, 
     StockHistoryResponse, NewsArticleResponse, GraphDataResponse,
@@ -33,6 +34,14 @@ async def lifespan(app: FastAPI):
     # Startup
     db = PostgreSQLConnection.create_connection()
     print("✓ Database connection established")
+    
+    # Create stock_notes table if it doesn't exist
+    try:
+        StockNote.create_table(db)
+        print("✓ Stock notes table initialized")
+    except Exception as e:
+        print(f"Warning: Could not initialize stock_notes table: {e}")
+    
     yield
     # Shutdown
     if db:
@@ -94,7 +103,11 @@ async def health_check():
 async def get_stocks(
     limit: int = Query(100, ge=1, le=1000, description="Number of stocks to return"),
     sector: Optional[str] = Query(None, description="Filter by sector"),
-    frequency: Optional[str] = Query(None, description="Filter by frequency (Daily, Weekly, Monthly)")
+    industry: Optional[str] = Query(None, description="Filter by industry"),
+    frequency: Optional[str] = Query(None, description="Filter by frequency (Daily, Weekly, Monthly)"),
+    recommendation: Optional[str] = Query(None, description="Filter by recommendation"),
+    min_price: Optional[float] = Query(None, description="Minimum current price"),
+    max_price: Optional[float] = Query(None, description="Maximum current price")
 ):
     """
     Get list of stocks with basic information
@@ -104,15 +117,26 @@ async def get_stocks(
         raise HTTPException(status_code=500, detail="Database connection failed")
     
     try:
-        query = session.query(Stock_List)
+        # Join with StockPrice table to enable price and recommendation filtering
+        query = session.query(Stock_List, StockPrice).outerjoin(
+            StockPrice, Stock_List.symbol == StockPrice.symbol
+        )
         
         # Apply filters
         if sector:
             query = query.filter(Stock_List.sector == sector)
+        if industry:
+            query = query.filter(Stock_List.industry == industry)
         if frequency:
             query = query.filter(Stock_List.Frequency == frequency)
+        if recommendation:
+            query = query.filter(StockPrice.Recommendation == recommendation)
+        if min_price is not None:
+            query = query.filter(StockPrice.current_price >= min_price)
+        if max_price is not None:
+            query = query.filter(StockPrice.current_price <= max_price)
         
-        stocks = query.limit(limit).all()
+        results = query.limit(limit).all()
         
         result = [
             StockListResponse(
@@ -120,9 +144,10 @@ async def get_stocks(
                 name=stock.name,
                 sector=stock.sector,
                 industry=stock.industry,
-                frequency=stock.Frequency
+                frequency=stock.Frequency,
+                current_price=price.current_price if price else None
             )
-            for stock in stocks
+            for stock, price in results
         ]
         
         return result
@@ -237,7 +262,7 @@ async def get_key_parameters():
 @app.get("/api/stocks/{symbol}/history", response_model=List[StockHistoryResponse])
 async def get_stock_history(
     symbol: str,
-    limit: int = Query(30, ge=1, le=365, description="Number of historical records to return")
+    limit: int = Query(30, ge=1, le=2000, description="Number of historical records to return")
 ):
     """
     Get historical price data for a specific stock
@@ -293,6 +318,34 @@ async def get_sectors():
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching sectors: {str(e)}")
+    finally:
+        session.close()
+
+
+@app.get("/api/industries")
+async def get_industries(sector: Optional[str] = Query(None, description="Filter industries by sector")):
+    """
+    Get list of all unique industries, optionally filtered by sector
+    """
+    session = db.get_session()
+    if not session:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    try:
+        query = session.query(Stock_List.industry).distinct().filter(
+            Stock_List.industry.isnot(None)
+        )
+        
+        if sector:
+            query = query.filter(Stock_List.sector == sector)
+        
+        industries = query.all()
+        
+        result = {"industries": sorted([i[0] for i in industries if i[0]])}
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching industries: {str(e)}")
     finally:
         session.close()
 
@@ -461,6 +514,76 @@ async def get_graph_data(
         raise HTTPException(status_code=500, detail=f"Error fetching graph data: {str(e)}")
     finally:
         session.close()
+
+
+# ==================== Stock Notes Endpoints ====================
+
+@app.get("/api/stocks/{symbol}/notes")
+async def get_stock_notes(symbol: str):
+    """Get all notes for a specific stock symbol"""
+    if not db:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        notes = StockNote.get_notes_by_symbol(db, symbol)
+        return notes  # Already returns list of dicts
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching notes: {str(e)}")
+
+
+@app.post("/api/stocks/{symbol}/notes")
+async def create_stock_note(symbol: str, request: dict):
+    """Create a new note for a stock"""
+    if not db:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    content = request.get('content')
+    if not content or not content.strip():
+        raise HTTPException(status_code=400, detail="Note content cannot be empty")
+    
+    try:
+        note = StockNote.create_note(db, symbol, content)
+        return note  # Already returns dict
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating note: {str(e)}")
+
+
+@app.put("/api/notes/{note_id}")
+async def update_stock_note(note_id: int, request: dict):
+    """Update an existing note"""
+    if not db:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    content = request.get('content')
+    if not content or not content.strip():
+        raise HTTPException(status_code=400, detail="Note content cannot be empty")
+    
+    try:
+        note = StockNote.update_note(db, note_id, content)
+        if not note:
+            raise HTTPException(status_code=404, detail="Note not found")
+        return note  # Already returns dict
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating note: {str(e)}")
+
+
+@app.delete("/api/notes/{note_id}")
+async def delete_stock_note(note_id: int):
+    """Delete a note by ID"""
+    if not db:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        deleted = StockNote.delete_note(db, note_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Note not found")
+        return {"message": "Note deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting note: {str(e)}")
 
 
 if __name__ == "__main__":

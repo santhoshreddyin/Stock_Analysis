@@ -55,6 +55,14 @@ export const stockAPI = {
     return response.data;
   },
 
+  // Get industries (optionally filtered by sector)
+  getIndustries: async (sector = null) => {
+    const response = await api.get('/api/industries', {
+      params: sector ? { sector } : {},
+    });
+    return response.data;
+  },
+
   // News and Graph APIs
 
   // Get news articles
@@ -88,6 +96,32 @@ export const stockAPI = {
     const response = await api.get('/api/graph', {
       params: { symbol, entity_type, limit },
     });
+    return response.data;
+  },
+
+  // Stock Notes APIs
+  
+  // Get all notes for a stock
+  getNotes: async (symbol) => {
+    const response = await api.get(`/api/stocks/${symbol}/notes`);
+    return response.data;
+  },
+
+  // Create a new note
+  createNote: async (symbol, content) => {
+    const response = await api.post(`/api/stocks/${symbol}/notes`, { content });
+    return response.data;
+  },
+
+  // Update a note
+  updateNote: async (noteId, content) => {
+    const response = await api.put(`/api/notes/${noteId}`, { content });
+    return response.data;
+  },
+
+  // Delete a note
+  deleteNote: async (noteId) => {
+    const response = await api.delete(`/api/notes/${noteId}`);
     return response.data;
   },
 };

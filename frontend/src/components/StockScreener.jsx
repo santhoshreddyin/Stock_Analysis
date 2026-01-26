@@ -12,22 +12,45 @@ const StockScreener = () => {
   const navigate = useNavigate();
   const [stocks, setStocks] = useState([]);
   const [sectors, setSectors] = useState([]);
+  const [industries, setIndustries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [priceRange, setPriceRange] = useState({ min: 0, max: 1000 });
   const [filters, setFilters] = useState({
     sector: '',
+    industry: '',
     frequency: '',
+    recommendation: '',
+    minPrice: 0,
+    maxPrice: 1000,
     limit: 100,
   });
 
   useEffect(() => {
     fetchSectors();
+    fetchIndustries();
     fetchStocks();
   }, []);
 
   useEffect(() => {
     fetchStocks();
-  }, [filters]);
+  }, [filters.sector, filters.industry, filters.frequency, filters.recommendation, filters.limit]);
+
+  useEffect(() => {
+    // Only fetch when price filters change by user
+    if (filters.minPrice >= priceRange.min && filters.maxPrice <= priceRange.max) {
+      fetchStocks();
+    }
+  }, [filters.minPrice, filters.maxPrice]);
+
+  useEffect(() => {
+    // Fetch industries when sector changes
+    if (filters.sector) {
+      fetchIndustries(filters.sector);
+    } else {
+      fetchIndustries();
+    }
+  }, [filters.sector]);
 
   const fetchSectors = async () => {
     try {
@@ -38,16 +61,45 @@ const StockScreener = () => {
     }
   };
 
+  const fetchIndustries = async (sector = null) => {
+    try {
+      const data = await stockAPI.getIndustries(sector);
+      setIndustries(data.industries || []);
+    } catch (err) {
+      console.error('Error fetching industries:', err);
+    }
+  };
+
+  const updatePriceRangeFromStocks = (stocksList) => {
+    const prices = stocksList
+      .map(s => s.current_price)
+      .filter(p => p != null && p > 0);
+    
+    if (prices.length > 0) {
+      const min = Math.floor(Math.min(...prices));
+      const max = Math.ceil(Math.max(...prices));
+      setPriceRange({ min, max });
+    } else {
+      setPriceRange({ min: 0, max: 1000 });
+    }
+  };
+
   const fetchStocks = async () => {
     try {
       setLoading(true);
       const params = {};
       if (filters.sector) params.sector = filters.sector;
+      if (filters.industry) params.industry = filters.industry;
       if (filters.frequency) params.frequency = filters.frequency;
+      if (filters.recommendation) params.recommendation = filters.recommendation;
+      if (filters.minPrice > priceRange.min) params.min_price = filters.minPrice;
+      if (filters.maxPrice < priceRange.max) params.max_price = filters.maxPrice;
       params.limit = filters.limit;
 
       const data = await stockAPI.getStocks(params);
       setStocks(data);
+      updatePriceRangeFromStocks(data);
+      
       setError(null);
     } catch (err) {
       setError('Failed to load stocks: ' + err.message);
@@ -58,10 +110,24 @@ const StockScreener = () => {
   };
 
   const handleFilterChange = (field, value) => {
-    setFilters((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setFilters((prev) => {
+      const newFilters = { ...prev, [field]: value };
+      
+      // Reset industry when sector changes
+      if (field === 'sector') {
+        newFilters.industry = '';
+        newFilters.minPrice = priceRange.min;
+        newFilters.maxPrice = priceRange.max;
+      }
+      
+      // Reset price when changing industry, frequency, or recommendation
+      if (field === 'industry' || field === 'frequency' || field === 'recommendation') {
+        newFilters.minPrice = priceRange.min;
+        newFilters.maxPrice = priceRange.max;
+      }
+      
+      return newFilters;
+    });
   };
 
   const handleStockClick = (symbol) => {
@@ -101,6 +167,23 @@ const StockScreener = () => {
         </div>
 
         <div className="filter-group">
+          <label htmlFor="industry-filter">Industry:</label>
+          <select
+            id="industry-filter"
+            value={filters.industry}
+            onChange={(e) => handleFilterChange('industry', e.target.value)}
+            disabled={!filters.sector && industries.length === 0}
+          >
+            <option value="">{filters.sector ? 'All Industries' : 'Select Sector First'}</option>
+            {industries.map((industry) => (
+              <option key={industry} value={industry}>
+                {industry}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="filter-group">
           <label htmlFor="frequency-filter">Frequency:</label>
           <select
             id="frequency-filter"
@@ -112,6 +195,55 @@ const StockScreener = () => {
             <option value="Weekly">Weekly</option>
             <option value="Monthly">Monthly</option>
           </select>
+        </div>
+
+        <div className="filter-group">
+          <label htmlFor="recommendation-filter">Recommendation:</label>
+          <select
+            id="recommendation-filter"
+            value={filters.recommendation}
+            onChange={(e) => handleFilterChange('recommendation', e.target.value)}
+          >
+            <option value="">All</option>
+            <option value="Strong Buy">Strong Buy</option>
+            <option value="Buy">Buy</option>
+            <option value="Hold">Hold</option>
+            <option value="Sell">Sell</option>
+          </select>
+        </div>
+
+        <div className="filter-group price-range-group">
+          <label>Price Range: ${filters.minPrice} - ${filters.maxPrice}</label>
+          <div className="dual-range-slider">
+            <input
+              type="range"
+              value={filters.minPrice}
+              onChange={(e) => {
+                const value = parseFloat(e.target.value);
+                if (value <= filters.maxPrice) {
+                  handleFilterChange('minPrice', value);
+                }
+              }}
+              min={priceRange.min}
+              max={priceRange.max}
+              step="1"
+              className="price-slider price-slider-min"
+            />
+            <input
+              type="range"
+              value={filters.maxPrice}
+              onChange={(e) => {
+                const value = parseFloat(e.target.value);
+                if (value >= filters.minPrice) {
+                  handleFilterChange('maxPrice', value);
+                }
+              }}
+              min={priceRange.min}
+              max={priceRange.max}
+              step="1"
+              className="price-slider price-slider-max"
+            />
+          </div>
         </div>
 
         <div className="filter-group">
@@ -145,12 +277,12 @@ const StockScreener = () => {
             onClick={() => handleStockClick(stock.symbol)}
           >
             <div className="stock-card-header">
-              <div className="stock-symbol">{stock.symbol}</div>
+              <div className="stock-symbol">{stock.name}</div>
               {stock.current_price && (
                 <div className="stock-price">${stock.current_price.toFixed(2)}</div>
               )}
             </div>
-            <div className="stock-name">{stock.name}</div>
+            <div className="stock-name">{stock.symbol}</div>
             <div className="stock-meta">
               {stock.sector && <span className="meta-tag sector-tag">{stock.sector}</span>}
               {stock.industry && <span className="meta-tag industry-tag">{stock.industry}</span>}

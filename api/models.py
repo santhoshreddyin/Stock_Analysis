@@ -14,6 +14,7 @@ class StockListResponse(BaseModel):
     sector: Optional[str] = Field(None, description="Industry sector")
     industry: Optional[str] = Field(None, description="Industry type")
     frequency: Optional[str] = Field(None, description="Data update frequency")
+    current_price: Optional[float] = Field(None, description="Current stock price")
 
     class Config:
         from_attributes = True

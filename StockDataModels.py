@@ -3,6 +3,8 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 import pandas as pd
 import logging
+from sqlalchemy import Column, Integer, String, Text, DateTime, Index
+from sqlalchemy.sql import func
 from MCP_Servers.yfinance_MCP import get_stock_price, get_historical_data
 from HelperFunctions import to_float
 
@@ -360,3 +362,184 @@ class StockDataModel:
         """Detailed representation of the stock."""
         return (f"StockDataModel(symbol='{self.symbol}', name='{self.name}', "
                 f"current_price={self.current_price}, sector='{self.sector}')")
+
+
+# Import Base from Data_Loader for ORM
+from Data_Loader import Base
+
+
+class StockNote(Base):
+    """
+    SQLAlchemy ORM model for storing user notes about stocks.
+    Provides CRUD operations for stock notes stored in PostgreSQL.
+    """
+    __tablename__ = "stock_notes"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(10), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        Index('idx_stock_notes_symbol', 'symbol'),
+    )
+    
+    @classmethod
+    def create_table(cls, db_connection):
+        """
+        Create the stock_notes table if it doesn't exist.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+        """
+        try:
+            if db_connection.engine:
+                Base.metadata.create_all(db_connection.engine, tables=[cls.__table__])
+                logger.info(f"Table {cls.__tablename__} created or already exists")
+        except Exception as e:
+            logger.error(f"Error creating {cls.__tablename__} table: {e}")
+            raise
+    
+    @classmethod
+    def create_note(cls, db_connection, symbol, content):
+        """
+        Create a new note for a stock.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+            symbol: Stock symbol
+            content: Note content
+            
+        Returns:
+            dict: The created note as dictionary
+        """
+        session = db_connection.get_session()
+        try:
+            note = cls(symbol=symbol.upper(), content=content)
+            session.add(note)
+            session.commit()
+            session.refresh(note)
+            return note.to_dict()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error creating note: {e}")
+            raise
+        finally:
+            session.close()
+    
+    @classmethod
+    def get_notes_by_symbol(cls, db_connection, symbol):
+        """
+        Get all notes for a specific stock symbol.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+            symbol: Stock symbol
+            
+        Returns:
+            list: List of note dictionaries
+        """
+        session = db_connection.get_session()
+        try:
+            notes = session.query(cls).filter(cls.symbol == symbol.upper()).order_by(cls.created_at.desc()).all()
+            return [note.to_dict() for note in notes]
+        except Exception as e:
+            logger.error(f"Error fetching notes: {e}")
+            raise
+        finally:
+            session.close()
+    
+    @classmethod
+    def get_note_by_id(cls, db_connection, note_id):
+        """
+        Get a specific note by ID.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+            note_id: Note ID
+            
+        Returns:
+            dict or None: The note as dictionary or None if not found
+        """
+        session = db_connection.get_session()
+        try:
+            note = session.query(cls).filter(cls.id == note_id).first()
+            return note.to_dict() if note else None
+        except Exception as e:
+            logger.error(f"Error fetching note: {e}")
+            raise
+        finally:
+            session.close()
+    
+    @classmethod
+    def update_note(cls, db_connection, note_id, content):
+        """
+        Update a note's content.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+            note_id: Note ID
+            content: New content
+            
+        Returns:
+            dict or None: Updated note as dictionary or None if not found
+        """
+        session = db_connection.get_session()
+        try:
+            note = session.query(cls).filter(cls.id == note_id).first()
+            if note:
+                note.content = content
+                note.updated_at = datetime.utcnow()
+                session.commit()
+                session.refresh(note)
+                return note.to_dict()
+            return None
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error updating note: {e}")
+            raise
+        finally:
+            session.close()
+    
+    @classmethod
+    def delete_note(cls, db_connection, note_id):
+        """
+        Delete a note by ID.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+            note_id: Note ID
+            
+        Returns:
+            bool: True if deleted, False if not found
+        """
+        session = db_connection.get_session()
+        try:
+            note = session.query(cls).filter(cls.id == note_id).first()
+            if note:
+                session.delete(note)
+                session.commit()
+                return True
+            return False
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error deleting note: {e}")
+            raise
+        finally:
+            session.close()
+    
+    def to_dict(self):
+        """Convert note to dictionary."""
+        return {
+            'id': self.id,
+            'symbol': self.symbol,
+            'content': self.content,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+    
+    def __repr__(self):
+        """String representation of the note."""
+        return f"StockNote(id={self.id}, symbol='{self.symbol}', created_at='{self.created_at}')"
+
