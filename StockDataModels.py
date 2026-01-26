@@ -543,3 +543,147 @@ class StockNote(Base):
         """String representation of the note."""
         return f"StockNote(id={self.id}, symbol='{self.symbol}', created_at='{self.created_at}')"
 
+
+class WatchList(Base):
+    """
+    SQLAlchemy ORM model for storing user watchlist of stocks.
+    Provides CRUD operations for watchlist stored in PostgreSQL.
+    """
+    __tablename__ = "watchlist"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(10), nullable=False, unique=True, index=True)
+    added_at = Column(DateTime, server_default=func.now())
+    
+    __table_args__ = (
+        Index('idx_watchlist_symbol', 'symbol'),
+    )
+    
+    @classmethod
+    def create_table(cls, db_connection):
+        """
+        Create the watchlist table if it doesn't exist.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+        """
+        try:
+            if db_connection.engine:
+                Base.metadata.create_all(db_connection.engine, tables=[cls.__table__])
+                logger.info(f"Table {cls.__tablename__} created or already exists")
+        except Exception as e:
+            logger.error(f"Error creating {cls.__tablename__} table: {e}")
+            raise
+    
+    @classmethod
+    def add_to_watchlist(cls, db_connection, symbol):
+        """
+        Add a stock to the watchlist.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+            symbol: Stock symbol
+            
+        Returns:
+            dict: The created watchlist item as dictionary
+        """
+        session = db_connection.get_session()
+        try:
+            # Check if already exists
+            existing = session.query(cls).filter_by(symbol=symbol.upper()).first()
+            if existing:
+                return existing.to_dict()
+            
+            watchlist_item = cls(symbol=symbol.upper())
+            session.add(watchlist_item)
+            session.commit()
+            session.refresh(watchlist_item)
+            return watchlist_item.to_dict()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error adding to watchlist: {e}")
+            raise
+        finally:
+            session.close()
+    
+    @classmethod
+    def get_all_watchlist(cls, db_connection):
+        """
+        Get all stocks in the watchlist.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+            
+        Returns:
+            list: List of watchlist items as dictionaries
+        """
+        session = db_connection.get_session()
+        try:
+            items = session.query(cls).order_by(cls.added_at.desc()).all()
+            return [item.to_dict() for item in items]
+        except Exception as e:
+            logger.error(f"Error getting watchlist: {e}")
+            raise
+        finally:
+            session.close()
+    
+    @classmethod
+    def is_in_watchlist(cls, db_connection, symbol):
+        """
+        Check if a stock is in the watchlist.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+            symbol: Stock symbol
+            
+        Returns:
+            bool: True if in watchlist, False otherwise
+        """
+        session = db_connection.get_session()
+        try:
+            item = session.query(cls).filter_by(symbol=symbol.upper()).first()
+            return item is not None
+        except Exception as e:
+            logger.error(f"Error checking watchlist: {e}")
+            raise
+        finally:
+            session.close()
+    
+    @classmethod
+    def remove_from_watchlist(cls, db_connection, symbol):
+        """
+        Remove a stock from the watchlist.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+            symbol: Stock symbol
+            
+        Returns:
+            bool: True if removed, False if not found
+        """
+        session = db_connection.get_session()
+        try:
+            item = session.query(cls).filter_by(symbol=symbol.upper()).first()
+            if item:
+                session.delete(item)
+                session.commit()
+                return True
+            return False
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error removing from watchlist: {e}")
+            raise
+        finally:
+            session.close()
+    
+    def to_dict(self):
+        """Convert watchlist item to dictionary."""
+        return {
+            'id': self.id,
+            'symbol': self.symbol,
+            'added_at': self.added_at.isoformat() if self.added_at else None
+        }
+    
+    def __repr__(self):
+        """String representation of the watchlist item."""
+        return f"WatchList(id={self.id}, symbol='{self.symbol}', added_at='{self.added_at}')"

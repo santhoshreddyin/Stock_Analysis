@@ -144,3 +144,12 @@ class NewsSearchRequest(BaseModel):
     symbol: Optional[str] = Field(None, description="Filter by stock symbol")
     limit: int = Field(10, ge=1, le=100, description="Maximum results")
 
+
+class WatchListResponse(BaseModel):
+    """Response model for watchlist item"""
+    id: int = Field(..., description="Watchlist item ID")
+    symbol: str = Field(..., description="Stock ticker symbol")
+    added_at: datetime = Field(..., description="Date and time added to watchlist")
+
+    class Config:
+        from_attributes = True

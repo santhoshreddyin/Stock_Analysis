@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import StockScreener from './components/StockScreener';
 import StockProfile from './components/StockProfile';
+import WatchList from './components/WatchList';
 import './App.css';
 
 function App() {
@@ -12,6 +13,8 @@ function App() {
           <Route path="/" element={<StockScreener />} />
           <Route path="/profile" element={<StockProfile />} />
           <Route path="/profile/:symbol" element={<StockProfile />} />
+          <Route path="/stock/:symbol" element={<StockProfile />} />
+          <Route path="/watchlist" element={<WatchList />} />
         </Routes>
       </Layout>
     </Router>
@@ -19,3 +22,4 @@ function App() {
 }
 
 export default App;
+

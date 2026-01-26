@@ -124,6 +124,33 @@ export const stockAPI = {
     const response = await api.delete(`/api/notes/${noteId}`);
     return response.data;
   },
+
+  // Watchlist APIs
+  
+  // Get all stocks in watchlist
+  getWatchList: async () => {
+    const response = await api.get('/api/watchlist');
+    return response.data;
+  },
+
+  // Add a stock to watchlist
+  addToWatchList: async (symbol) => {
+    const response = await api.post(`/api/watchlist/${symbol}`);
+    return response.data;
+  },
+
+  // Remove a stock from watchlist
+  removeFromWatchList: async (symbol) => {
+    const response = await api.delete(`/api/watchlist/${symbol}`);
+    return response.data;
+  },
+
+  // Check if a stock is in watchlist
+  checkWatchList: async (symbol) => {
+    const response = await api.get(`/api/watchlist/check/${symbol}`);
+    return response.data;
+  },
 };
 
 export default api;
+

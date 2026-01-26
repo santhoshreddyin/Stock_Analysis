@@ -16,11 +16,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Data_Loader import PostgreSQLConnection, Stock_List, StockPrice, Stock_History
 from NewsGraphModels import NewsArticle, NewsSummary
 from NewsProcessingService import get_news_service
-from StockDataModels import StockNote
+from StockDataModels import StockNote, WatchList
 from api.models import (
     StockListResponse, StockDetailResponse, KeyParametersResponse, 
     StockHistoryResponse, NewsArticleResponse, GraphDataResponse,
-    NewsSummaryResponse, NewsSearchRequest
+    NewsSummaryResponse, NewsSearchRequest, WatchListResponse
 )
 
 # Database connection (initialized on startup)
@@ -41,6 +41,13 @@ async def lifespan(app: FastAPI):
         print("✓ Stock notes table initialized")
     except Exception as e:
         print(f"Warning: Could not initialize stock_notes table: {e}")
+    
+    # Create watchlist table if it doesn't exist
+    try:
+        WatchList.create_table(db)
+        print("✓ Watchlist table initialized")
+    except Exception as e:
+        print(f"Warning: Could not initialize watchlist table: {e}")
     
     yield
     # Shutdown
@@ -586,6 +593,70 @@ async def delete_stock_note(note_id: int):
         raise HTTPException(status_code=500, detail=f"Error deleting note: {str(e)}")
 
 
+# Watchlist endpoints
+@app.get("/api/watchlist", response_model=List[WatchListResponse])
+async def get_watchlist():
+    """Get all stocks in the watchlist"""
+    if not db:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        watchlist = WatchList.get_all_watchlist(db)
+        return watchlist
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching watchlist: {str(e)}")
+
+
+@app.post("/api/watchlist/{symbol}")
+async def add_to_watchlist(symbol: str):
+    """Add a stock to the watchlist"""
+    if not db:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        # Check if already exists
+        if WatchList.is_in_watchlist(db, symbol.upper()):
+            raise HTTPException(status_code=400, detail="Stock already in watchlist")
+        
+        watchlist_item = WatchList.add_to_watchlist(db, symbol.upper())
+        return watchlist_item
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error adding to watchlist: {str(e)}")
+
+
+@app.delete("/api/watchlist/{symbol}")
+async def remove_from_watchlist(symbol: str):
+    """Remove a stock from the watchlist"""
+    if not db:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        deleted = WatchList.remove_from_watchlist(db, symbol.upper())
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Stock not in watchlist")
+        return {"message": "Stock removed from watchlist"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error removing from watchlist: {str(e)}")
+
+
+@app.get("/api/watchlist/check/{symbol}")
+async def check_watchlist(symbol: str):
+    """Check if a stock is in the watchlist"""
+    if not db:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        is_in_watchlist = WatchList.is_in_watchlist(db, symbol.upper())
+        return {"in_watchlist": is_in_watchlist}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error checking watchlist: {str(e)}")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+

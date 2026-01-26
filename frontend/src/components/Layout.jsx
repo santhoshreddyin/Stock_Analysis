@@ -38,10 +38,17 @@ const Layout = ({ children }) => {
             </Link>
             <Link 
               to="/profile" 
-              className={`nav-item ${isActive('/profile') || location.pathname.startsWith('/profile/') ? 'active' : ''}`}
+              className={`nav-item ${isActive('/profile') || location.pathname.startsWith('/profile/') || location.pathname.startsWith('/stock/') ? 'active' : ''}`}
             >
               <span className="nav-icon">📊</span>
               <span className="nav-text">Stock Profile</span>
+            </Link>
+            <Link 
+              to="/watchlist" 
+              className={`nav-item ${isActive('/watchlist') ? 'active' : ''}`}
+            >
+              <span className="nav-icon">⭐</span>
+              <span className="nav-text">Watch List</span>
             </Link>
           </div>
           <div className="nav-footer">

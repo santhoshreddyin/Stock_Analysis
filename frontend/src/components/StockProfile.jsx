@@ -32,6 +32,9 @@ const StockProfile = () => {
   const [right, setRight] = useState('dataMax');
   const [top, setTop] = useState('dataMax+1');
   const [bottom, setBottom] = useState('dataMin-1');
+  const [inWatchList, setInWatchList] = useState(false);
+  const [watchListLoading, setWatchListLoading] = useState(false);
+
 
   const periodLimits = {
     '30d': 30,
@@ -65,6 +68,7 @@ const StockProfile = () => {
       fetchStockDetail();
       fetchNotes();
       fetchStockHistory(); // Auto-load history
+      checkWatchListStatus(); // Check if in watchlist
     }
   }, [symbol]);
 
@@ -156,6 +160,33 @@ const StockProfile = () => {
   const cancelEditing = () => {
     setEditingNoteId(null);
     setEditNoteText('');
+  };
+
+  const checkWatchListStatus = async () => {
+    try {
+      const result = await stockAPI.checkWatchList(symbol);
+      setInWatchList(result.in_watchlist);
+    } catch (err) {
+      console.error('Error checking watchlist status:', err);
+    }
+  };
+
+  const toggleWatchList = async () => {
+    try {
+      setWatchListLoading(true);
+      if (inWatchList) {
+        await stockAPI.removeFromWatchList(symbol);
+        setInWatchList(false);
+      } else {
+        await stockAPI.addToWatchList(symbol);
+        setInWatchList(true);
+      }
+    } catch (err) {
+      console.error('Error toggling watchlist:', err);
+      alert(`Failed to ${inWatchList ? 'remove from' : 'add to'} watchlist`);
+    } finally {
+      setWatchListLoading(false);
+    }
   };
 
   const zoom = () => {
@@ -272,9 +303,18 @@ const StockProfile = () => {
   return (
     <div className="stock-profile">
       <div className="profile-header">
-        <button onClick={() => navigate('/')} className="back-button">
-          ← Back to Stock Screener
-        </button>
+        <div className="header-actions">
+          <button onClick={() => navigate('/')} className="back-button">
+            ← Back to Stock Screener
+          </button>
+          <button 
+            onClick={toggleWatchList} 
+            className={`watchlist-button ${inWatchList ? 'in-watchlist' : ''}`}
+            disabled={watchListLoading}
+          >
+            {watchListLoading ? '...' : inWatchList ? '⭐ Remove from Watchlist' : '☆ Add to Watchlist'}
+          </button>
+        </div>
         <div className="stock-title-section">
           <h1 className="stock-title">
             {stockDetail.symbol} - {stockDetail.name}

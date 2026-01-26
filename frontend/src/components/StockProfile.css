@@ -11,6 +11,13 @@
   margin-bottom: 30px;
 }
 
+.header-actions {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
 .back-button {
   background: #667eea;
   color: white;
@@ -21,12 +28,43 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s;
-  margin-bottom: 20px;
 }
 
 .back-button:hover {
   background: #5568d3;
   transform: translateX(-4px);
+}
+
+.watchlist-button {
+  background: white;
+  color: #667eea;
+  border: 2px solid #667eea;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.watchlist-button:hover:not(:disabled) {
+  background: #f0f3ff;
+  transform: translateY(-2px);
+}
+
+.watchlist-button.in-watchlist {
+  background: #ffd700;
+  color: #333;
+  border-color: #ffd700;
+}
+
+.watchlist-button.in-watchlist:hover:not(:disabled) {
+  background: #ffed4e;
+}
+
+.watchlist-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .stock-title-section {
