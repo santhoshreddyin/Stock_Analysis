@@ -153,3 +153,17 @@ class WatchListResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PortfolioResponse(BaseModel):
+    """Response model for portfolio item"""
+    id: int = Field(..., description="Portfolio item ID")
+    symbol: str = Field(..., description="Stock ticker symbol")
+    shares: float = Field(..., description="Number of shares")
+    purchase_price: float = Field(..., description="Purchase price per share")
+    purchase_date: str = Field(..., description="Date of purchase")
+    created_at: str = Field(..., description="Date and time added to portfolio")
+    updated_at: str = Field(..., description="Date and time last updated")
+
+    class Config:
+        from_attributes = True
