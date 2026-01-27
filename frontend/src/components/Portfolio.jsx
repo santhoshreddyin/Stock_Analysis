@@ -31,16 +31,18 @@ const Portfolio = () => {
       const portfolioData = await stockAPI.getPortfolio();
       setPortfolio(portfolioData);
 
-      // Fetch stock details for each portfolio item
+      // Fetch stock details for all portfolio items concurrently
       const stockDetails = {};
-      for (const item of portfolioData) {
-        try {
-          const detail = await stockAPI.getStockDetail(item.symbol);
-          stockDetails[item.symbol] = detail;
-        } catch (err) {
-          console.error(`Error fetching details for ${item.symbol}:`, err);
-        }
-      }
+      await Promise.all(
+        portfolioData.map(async (item) => {
+          try {
+            const detail = await stockAPI.getStockDetail(item.symbol);
+            stockDetails[item.symbol] = detail;
+          } catch (err) {
+            console.error(`Error fetching details for ${item.symbol}:`, err);
+          }
+        })
+      );
       setStocks(stockDetails);
     } catch (err) {
       setError('Failed to load portfolio');

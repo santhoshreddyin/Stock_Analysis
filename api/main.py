@@ -695,7 +695,11 @@ async def add_to_portfolio(request: dict):
         
         # Convert purchase_date string to date object
         from datetime import datetime as dt
-        purchase_date_obj = dt.fromisoformat(purchase_date.replace('Z', '+00:00')).date()
+        # Handle both ISO format with timezone and simple YYYY-MM-DD format
+        if 'T' in purchase_date:
+            purchase_date_obj = dt.fromisoformat(purchase_date.replace('Z', '+00:00')).date()
+        else:
+            purchase_date_obj = dt.strptime(purchase_date, '%Y-%m-%d').date()
         
         portfolio_item = Portfolio.add_to_portfolio(db, symbol.upper(), shares, purchase_price, purchase_date_obj)
         return portfolio_item
@@ -720,7 +724,11 @@ async def update_portfolio(portfolio_id: int, request: dict):
         purchase_date_obj = None
         if purchase_date:
             from datetime import datetime as dt
-            purchase_date_obj = dt.fromisoformat(purchase_date.replace('Z', '+00:00')).date()
+            # Handle both ISO format with timezone and simple YYYY-MM-DD format
+            if 'T' in purchase_date:
+                purchase_date_obj = dt.fromisoformat(purchase_date.replace('Z', '+00:00')).date()
+            else:
+                purchase_date_obj = dt.strptime(purchase_date, '%Y-%m-%d').date()
         
         portfolio_item = Portfolio.update_portfolio(db, portfolio_id, shares, purchase_price, purchase_date_obj)
         if not portfolio_item:
