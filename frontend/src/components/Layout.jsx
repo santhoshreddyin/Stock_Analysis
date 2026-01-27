@@ -44,6 +44,13 @@ const Layout = ({ children }) => {
               <span className="nav-text">Stock Profile</span>
             </Link>
             <Link 
+              to="/portfolio" 
+              className={`nav-item ${isActive('/portfolio') ? 'active' : ''}`}
+            >
+              <span className="nav-icon">💼</span>
+              <span className="nav-text">Portfolio</span>
+            </Link>
+            <Link 
               to="/watchlist" 
               className={`nav-item ${isActive('/watchlist') ? 'active' : ''}`}
             >
