@@ -211,6 +211,44 @@ async def get_stock_detail(symbol: str):
         session.close()
 
 
+@app.patch("/api/stocks/{symbol}/frequency")
+async def update_stock_frequency(symbol: str, frequency: str = Query(..., description="Monitoring frequency: Daily, Weekly, or Monthly")):
+    """
+    Update the monitoring frequency for a specific stock
+    """
+    session = db.get_session()
+    if not session:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    try:
+        # Validate frequency
+        valid_frequencies = ['Daily', 'Weekly', 'Monthly']
+        if frequency not in valid_frequencies:
+            raise HTTPException(status_code=400, detail=f"Invalid frequency. Must be one of: {', '.join(valid_frequencies)}")
+        
+        # Get and update stock
+        stock = session.query(Stock_List).filter_by(symbol=symbol.upper()).first()
+        if not stock:
+            raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
+        
+        stock.Frequency = frequency
+        session.commit()
+        
+        return {
+            "success": True,
+            "symbol": stock.symbol,
+            "frequency": stock.Frequency,
+            "message": f"Monitoring frequency updated to {frequency}"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating frequency: {str(e)}")
+    finally:
+        session.close()
+
+
 @app.get("/api/key-parameters", response_model=KeyParametersResponse)
 async def get_key_parameters():
     """

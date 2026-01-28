@@ -34,6 +34,8 @@ const StockProfile = () => {
   const [bottom, setBottom] = useState('dataMin-1');
   const [inWatchList, setInWatchList] = useState(false);
   const [watchListLoading, setWatchListLoading] = useState(false);
+  const [frequency, setFrequency] = useState('');
+  const [updatingFrequency, setUpdatingFrequency] = useState(false);
 
 
   const periodLimits = {
@@ -83,6 +85,7 @@ const StockProfile = () => {
       setLoading(true);
       const data = await stockAPI.getStockDetail(symbol);
       setStockDetail(data);
+      setFrequency(data.frequency || 'Daily');
       setError(null);
     } catch (err) {
       setError('Failed to load stock details: ' + err.message);
@@ -188,7 +191,22 @@ const StockProfile = () => {
       setWatchListLoading(false);
     }
   };
-
+  const handleFrequencyChange = async (newFrequency) => {
+    try {
+      setUpdatingFrequency(true);
+      await stockAPI.updateStockFrequency(symbol, newFrequency);
+      setFrequency(newFrequency);
+      // Update stockDetail to reflect new frequency
+      if (stockDetail) {
+        setStockDetail({ ...stockDetail, frequency: newFrequency });
+      }
+    } catch (err) {
+      console.error('Error updating frequency:', err);
+      alert('Failed to update monitoring frequency');
+    } finally {
+      setUpdatingFrequency(false);
+    }
+  };
   const zoom = () => {
     let refLeft = refAreaLeft;
     let refRight = refAreaRight;
@@ -356,8 +374,20 @@ const StockProfile = () => {
                   <span className="info-value">{stockDetail.industry || 'N/A'}</span>
                 </div>
                 <div className="info-item">
-                  <span className="info-label">Frequency:</span>
-                  <span className="info-value">{stockDetail.frequency || 'N/A'}</span>
+                  <span className="info-label">Monitoring Frequency:</span>
+                  <span className="info-value">
+                    <select 
+                      value={frequency} 
+                      onChange={(e) => handleFrequencyChange(e.target.value)}
+                      className="frequency-selector"
+                      disabled={updatingFrequency}
+                    >
+                      <option value="Daily">Daily</option>
+                      <option value="Weekly">Weekly</option>
+                      <option value="Monthly">Monthly</option>
+                    </select>
+                    {updatingFrequency && <span className="updating-indicator"> ⏳</span>}
+                  </span>
                 </div>
                 <div className="info-item">
                   <span className="info-label">Current Price:</span>
