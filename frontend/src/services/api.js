@@ -150,6 +150,12 @@ export const stockAPI = {
     const response = await api.get(`/api/watchlist/check/${symbol}`);
     return response.data;
   },
+
+  // Update stock monitoring frequency
+  updateStockFrequency: async (symbol, frequency) => {
+    const response = await api.patch(`/api/stocks/${symbol}/frequency?frequency=${frequency}`);
+    return response.data;
+  },
 };
 
 export default api;

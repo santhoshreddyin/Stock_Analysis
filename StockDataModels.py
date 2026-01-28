@@ -1,11 +1,11 @@
 """Data models for stock market analysis."""
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 import pandas as pd
 import logging
 from sqlalchemy import Column, Integer, String, Text, DateTime, Index
 from sqlalchemy.sql import func
-from MCP_Servers.yfinance_MCP import get_stock_price, get_historical_data
+from MCP_Servers.yfinance_MCP import get_stock_price, get_historical_data, get_batch_historical_data
 from HelperFunctions import to_float
 
 # Configure logger for this module
@@ -94,8 +94,8 @@ class StockDataModel:
             self.recommendation = info.get("Recommendation")
             self.description = info.get("Description")
             
-            # Fetch and process historical data
-            history = get_historical_data(self.symbol, period="200d")
+            # Fetch and process historical data (use DB cache, only fetch what's needed)
+            history = get_historical_data(self.symbol, period="200d", use_db=True)
             self.history_df = pd.DataFrame(history)
             
             if not self.history_df.empty:
@@ -127,6 +127,100 @@ class StockDataModel:
         except Exception as e:
             logger.error(f"Error fetching data for {self.symbol}: {str(e)}")
             self.data_fetch_success = False
+    
+    @classmethod
+    def batch_create(cls, symbols: List[str], period: str = "200d") -> Dict[str, 'StockDataModel']:
+        """
+        Create multiple StockDataModel instances efficiently using batch download.
+        
+        This is much faster than creating instances one by one because yfinance
+        downloads all stock data in parallel.
+        
+        Args:
+            symbols: List of stock ticker symbols
+            period: Historical data period (default: "200d" for MA calculations)
+        
+        Returns:
+            Dictionary mapping symbol to StockDataModel instance
+        
+        Example:
+            stocks = StockDataModel.batch_create(['AAPL', 'MSFT', 'GOOGL'])
+            for symbol, stock in stocks.items():
+                if stock.data_fetch_success:
+                    print(f"{symbol}: ${stock.current_price}")
+        
+        Note:
+            For large numbers of stocks, call this in chunks of 250 or less to avoid rate limits.
+        """
+        logger.info(f"Batch creating StockDataModel for {len(symbols)} symbols")
+        
+        # Create instances without fetching data
+        stock_models = {symbol: cls(symbol, fetch_data=False) for symbol in symbols}
+        
+        # Batch download historical data (use_db is not supported in batch, so we skip DB cache here)
+        # The batch download is fast enough and we only fetch the requested period
+        batch_history = get_batch_historical_data(symbols, period=period)
+        
+        # Process each stock
+        for symbol in symbols:
+            stock = stock_models[symbol]
+            
+            try:
+                # Fetch basic stock information (this is quick, no historical data)
+                info = get_stock_price(symbol)
+                
+                # Set basic information
+                stock.name = info.get("Name")
+                stock.current_price = to_float(info.get("Current Price"))
+                stock.sector = info.get("sector")
+                stock.industry = info.get("industry")
+                
+                # Set price targets and ranges
+                stock.target_high = to_float(info.get("Target High"))
+                stock.target_low = to_float(info.get("Target Low"))
+                stock.week52_high = to_float(info.get("52 Week High"))
+                stock.week52_low = to_float(info.get("52 Week Low"))
+                
+                # Set recommendations
+                stock.recommendation = info.get("Recommendation")
+                stock.description = info.get("Description")
+                
+                # Process historical data from batch download
+                history_data = batch_history.get(symbol, [])
+                if history_data:
+                    stock.history_df = pd.DataFrame(history_data)
+                    
+                    # Calculate technical indicators
+                    stock.history_df['close'] = pd.to_numeric(stock.history_df['close'], errors='coerce')
+                    stock.history_df['volume'] = pd.to_numeric(stock.history_df['volume'], errors='coerce')
+                    
+                    # Calculate moving averages
+                    stock.history_df['50_MA'] = stock.history_df['close'].rolling(window=cls.DEFAULT_MA_50_PERIOD).mean()
+                    stock.history_df['200_MA'] = stock.history_df['close'].rolling(window=cls.DEFAULT_MA_200_PERIOD).mean()
+                    
+                    # Set technical indicators
+                    stock.ma_50 = stock.history_df['50_MA'].iloc[-1] if len(stock.history_df) >= cls.DEFAULT_MA_50_PERIOD else None
+                    stock.ma_200 = stock.history_df['200_MA'].iloc[-1] if len(stock.history_df) >= cls.DEFAULT_MA_200_PERIOD else None
+                    stock.average_volume = stock.history_df['volume'].rolling(window=50).mean().iloc[-1]
+                    
+                    # Calculate price change
+                    if len(stock.history_df) >= 2:
+                        stock.previous_close = to_float(stock.history_df['close'].iloc[-2])
+                        if stock.previous_close is not None and stock.current_price is not None:
+                            stock.price_change_percent = ((stock.current_price - stock.previous_close) / stock.previous_close) * 100
+                    
+                    stock.last_updated = datetime.now()
+                    stock.data_fetch_success = True
+                else:
+                    logger.warning(f"No historical data available for {symbol}")
+                    stock.data_fetch_success = False
+                    
+            except Exception as e:
+                logger.error(f"Error processing batch data for {symbol}: {str(e)}")
+                stock.data_fetch_success = False
+        
+        logger.info(f"Batch creation completed. Successful: {sum(1 for s in stock_models.values() if s.data_fetch_success)}/{len(symbols)}")
+        return stock_models
         
     # ==================== Setter Methods ====================
     

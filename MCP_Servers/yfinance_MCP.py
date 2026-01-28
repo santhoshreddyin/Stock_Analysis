@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 import yfinance as yf
+import pandas as pd
 from mcp.server.fastmcp import FastMCP
 
 
@@ -330,6 +331,87 @@ def get_historical_data(symbol: str, period: str = "1mo", use_db: bool = True) -
     except Exception as e:
         logger.error(f"Error fetching historical data for {symbol}: {str(e)}")
         raise RuntimeError(f"Failed to fetch historical data: {str(e)}")
+
+def get_batch_historical_data(symbols: list[str], period: str = "1mo") -> dict[str, list[dict[str, Any]]]:
+    """Get historical data for multiple symbols at once using yfinance batch download.
+    
+    This is much faster than calling get_historical_data() multiple times individually.
+    yfinance will download all symbols in parallel.
+    
+    Args:
+        symbols: List of stock ticker symbols
+        period: Period to return (e.g., "1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max")
+    
+    Returns:
+        Dictionary mapping each symbol to its historical data list
+    """
+    try:
+        if not symbols:
+            return {}
+        
+        logger.info(f"Batch downloading historical data for {len(symbols)} symbols")
+        
+        # Use yfinance download function for batch downloading
+        # This downloads all symbols in parallel
+        data = yf.download(
+            tickers=" ".join(symbols),
+            period=period,
+            group_by='ticker',
+            threads=True,  # Enable multi-threading
+            progress=False  # Disable progress bar for cleaner output
+        )
+        
+        results = {}
+        
+        # Handle single symbol case
+        if len(symbols) == 1:
+            symbol = symbols[0]
+            if not data.empty:
+                history_list = []
+                for date, row in data.iterrows():
+                    history_list.append({
+                        "date": date.strftime("%Y-%m-%d"),
+                        "open": float(row["Open"]) if row.get("Open") is not None and not pd.isna(row.get("Open")) else None,
+                        "high": float(row["High"]) if row.get("High") is not None and not pd.isna(row.get("High")) else None,
+                        "low": float(row["Low"]) if row.get("Low") is not None and not pd.isna(row.get("Low")) else None,
+                        "close": float(row["Close"]) if row.get("Close") is not None and not pd.isna(row.get("Close")) else None,
+                        "volume": int(row["Volume"]) if row.get("Volume") is not None and not pd.isna(row.get("Volume")) else None,
+                    })
+                results[symbol] = history_list
+            else:
+                results[symbol] = []
+        else:
+            # Multiple symbols - data is grouped by ticker
+            for symbol in symbols:
+                try:
+                    if symbol in data.columns.levels[0]:
+                        symbol_data = data[symbol]
+                        history_list = []
+                        for date, row in symbol_data.iterrows():
+                            history_list.append({
+                                "date": date.strftime("%Y-%m-%d"),
+                                "open": float(row["Open"]) if row.get("Open") is not None and not pd.isna(row.get("Open")) else None,
+                                "high": float(row["High"]) if row.get("High") is not None and not pd.isna(row.get("High")) else None,
+                                "low": float(row["Low"]) if row.get("Low") is not None and not pd.isna(row.get("Low")) else None,
+                                "close": float(row["Close"]) if row.get("Close") is not None and not pd.isna(row.get("Close")) else None,
+                                "volume": int(row["Volume"]) if row.get("Volume") is not None and not pd.isna(row.get("Volume")) else None,
+                            })
+                        results[symbol] = history_list
+                    else:
+                        logger.warning(f"No data returned for {symbol}")
+                        results[symbol] = []
+                except Exception as e:
+                    logger.error(f"Error processing {symbol}: {str(e)}")
+                    results[symbol] = []
+        
+        logger.info(f"Batch download completed for {len(results)} symbols")
+        return results
+        
+    except Exception as e:
+        logger.error(f"Error in batch historical data download: {str(e)}")
+        # Return empty dict for all symbols on error
+        return {symbol: [] for symbol in symbols}
+
 
 @mcp.tool()
 def search_stocks(query: str, limit: int = 5) -> dict[str, Any]:
