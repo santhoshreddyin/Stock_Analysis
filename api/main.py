@@ -16,11 +16,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Data_Loader import PostgreSQLConnection, Stock_List, StockPrice, Stock_History
 from NewsGraphModels import NewsArticle, NewsSummary
 from NewsProcessingService import get_news_service
-from StockDataModels import StockNote, WatchList
+from StockDataModels import StockNote, WatchList, Portfolio
 from api.models import (
     StockListResponse, StockDetailResponse, KeyParametersResponse, 
     StockHistoryResponse, NewsArticleResponse, GraphDataResponse,
-    NewsSummaryResponse, NewsSearchRequest, WatchListResponse
+    NewsSummaryResponse, NewsSearchRequest, WatchListResponse, PortfolioResponse
 )
 
 # Database connection (initialized on startup)
@@ -48,6 +48,13 @@ async def lifespan(app: FastAPI):
         print("✓ Watchlist table initialized")
     except Exception as e:
         print(f"Warning: Could not initialize watchlist table: {e}")
+    
+    # Create portfolio table if it doesn't exist
+    try:
+        Portfolio.create_table(db)
+        print("✓ Portfolio table initialized")
+    except Exception as e:
+        print(f"Warning: Could not initialize portfolio table: {e}")
     
     yield
     # Shutdown
@@ -692,6 +699,100 @@ async def check_watchlist(symbol: str):
         return {"in_watchlist": is_in_watchlist}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error checking watchlist: {str(e)}")
+
+
+# ==================== Portfolio Endpoints ====================
+
+@app.get("/api/portfolio", response_model=List[PortfolioResponse])
+async def get_portfolio():
+    """Get all stocks in the portfolio"""
+    if not db:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        portfolio = Portfolio.get_all_portfolio(db)
+        return portfolio
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching portfolio: {str(e)}")
+
+
+@app.post("/api/portfolio")
+async def add_to_portfolio(request: dict):
+    """Add a stock to the portfolio"""
+    if not db:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        symbol = request.get('symbol')
+        shares = request.get('shares')
+        purchase_price = request.get('purchase_price')
+        purchase_date = request.get('purchase_date')
+        
+        if not symbol or shares is None or purchase_price is None or not purchase_date:
+            raise HTTPException(status_code=400, detail="Missing required fields: symbol, shares, purchase_price, purchase_date")
+        
+        # Convert purchase_date string to date object
+        from datetime import datetime as dt
+        # Handle both ISO format with timezone and simple YYYY-MM-DD format
+        if 'T' in purchase_date:
+            purchase_date_obj = dt.fromisoformat(purchase_date.replace('Z', '+00:00')).date()
+        else:
+            purchase_date_obj = dt.strptime(purchase_date, '%Y-%m-%d').date()
+        
+        portfolio_item = Portfolio.add_to_portfolio(db, symbol.upper(), shares, purchase_price, purchase_date_obj)
+        return portfolio_item
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error adding to portfolio: {str(e)}")
+
+
+@app.put("/api/portfolio/{portfolio_id}")
+async def update_portfolio(portfolio_id: int, request: dict):
+    """Update a portfolio item"""
+    if not db:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        shares = request.get('shares')
+        purchase_price = request.get('purchase_price')
+        purchase_date = request.get('purchase_date')
+        
+        # Convert purchase_date string to date object if provided
+        purchase_date_obj = None
+        if purchase_date:
+            from datetime import datetime as dt
+            # Handle both ISO format with timezone and simple YYYY-MM-DD format
+            if 'T' in purchase_date:
+                purchase_date_obj = dt.fromisoformat(purchase_date.replace('Z', '+00:00')).date()
+            else:
+                purchase_date_obj = dt.strptime(purchase_date, '%Y-%m-%d').date()
+        
+        portfolio_item = Portfolio.update_portfolio(db, portfolio_id, shares, purchase_price, purchase_date_obj)
+        if not portfolio_item:
+            raise HTTPException(status_code=404, detail="Portfolio item not found")
+        return portfolio_item
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating portfolio: {str(e)}")
+
+
+@app.delete("/api/portfolio/{portfolio_id}")
+async def remove_from_portfolio(portfolio_id: int):
+    """Remove a stock from the portfolio"""
+    if not db:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        deleted = Portfolio.remove_from_portfolio(db, portfolio_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Portfolio item not found")
+        return {"message": "Portfolio item deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error removing from portfolio: {str(e)}")
 
 
 if __name__ == "__main__":

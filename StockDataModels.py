@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 import pandas as pd
 import logging
-from sqlalchemy import Column, Integer, String, Text, DateTime, Index
+from sqlalchemy import Column, Integer, String, Text, DateTime, Float, Date, Index
 from sqlalchemy.sql import func
 from MCP_Servers.yfinance_MCP import get_stock_price, get_historical_data, get_batch_historical_data
 from HelperFunctions import to_float
@@ -781,3 +781,196 @@ class WatchList(Base):
     def __repr__(self):
         """String representation of the watchlist item."""
         return f"WatchList(id={self.id}, symbol='{self.symbol}', added_at='{self.added_at}')"
+
+
+class Portfolio(Base):
+    """
+    SQLAlchemy ORM model for storing user portfolio of stocks.
+    Provides CRUD operations for portfolio stored in PostgreSQL.
+    """
+    __tablename__ = "portfolio"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(10), nullable=False, index=True)
+    shares = Column(Float, nullable=False)
+    purchase_price = Column(Float, nullable=False)
+    purchase_date = Column(Date, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        Index('idx_portfolio_symbol', 'symbol'),
+    )
+    
+    @classmethod
+    def create_table(cls, db_connection):
+        """
+        Create the portfolio table if it doesn't exist.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+        """
+        try:
+            if db_connection.engine:
+                Base.metadata.create_all(db_connection.engine, tables=[cls.__table__])
+                logger.info(f"Table {cls.__tablename__} created or already exists")
+        except Exception as e:
+            logger.error(f"Error creating {cls.__tablename__} table: {e}")
+            raise
+    
+    @classmethod
+    def add_to_portfolio(cls, db_connection, symbol, shares, purchase_price, purchase_date):
+        """
+        Add a stock to the portfolio.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+            symbol: Stock symbol
+            shares: Number of shares
+            purchase_price: Purchase price per share
+            purchase_date: Date of purchase
+            
+        Returns:
+            dict: The created portfolio item as dictionary
+        """
+        session = db_connection.get_session()
+        try:
+            portfolio_item = cls(
+                symbol=symbol.upper(),
+                shares=shares,
+                purchase_price=purchase_price,
+                purchase_date=purchase_date
+            )
+            session.add(portfolio_item)
+            session.commit()
+            session.refresh(portfolio_item)
+            return portfolio_item.to_dict()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error adding to portfolio: {e}")
+            raise
+        finally:
+            session.close()
+    
+    @classmethod
+    def get_all_portfolio(cls, db_connection):
+        """
+        Get all stocks in the portfolio.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+            
+        Returns:
+            list: List of portfolio items as dictionaries
+        """
+        session = db_connection.get_session()
+        try:
+            items = session.query(cls).order_by(cls.purchase_date.desc()).all()
+            return [item.to_dict() for item in items]
+        except Exception as e:
+            logger.error(f"Error getting portfolio: {e}")
+            raise
+        finally:
+            session.close()
+    
+    @classmethod
+    def get_portfolio_by_id(cls, db_connection, portfolio_id):
+        """
+        Get a specific portfolio item by ID.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+            portfolio_id: Portfolio item ID
+            
+        Returns:
+            dict or None: The portfolio item as dictionary or None if not found
+        """
+        session = db_connection.get_session()
+        try:
+            item = session.query(cls).filter(cls.id == portfolio_id).first()
+            return item.to_dict() if item else None
+        except Exception as e:
+            logger.error(f"Error fetching portfolio item: {e}")
+            raise
+        finally:
+            session.close()
+    
+    @classmethod
+    def update_portfolio(cls, db_connection, portfolio_id, shares=None, purchase_price=None, purchase_date=None):
+        """
+        Update a portfolio item.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+            portfolio_id: Portfolio item ID
+            shares: New number of shares (optional)
+            purchase_price: New purchase price (optional)
+            purchase_date: New purchase date (optional)
+            
+        Returns:
+            dict or None: Updated portfolio item as dictionary or None if not found
+        """
+        session = db_connection.get_session()
+        try:
+            item = session.query(cls).filter(cls.id == portfolio_id).first()
+            if item:
+                if shares is not None:
+                    item.shares = shares
+                if purchase_price is not None:
+                    item.purchase_price = purchase_price
+                if purchase_date is not None:
+                    item.purchase_date = purchase_date
+                item.updated_at = datetime.utcnow()
+                session.commit()
+                session.refresh(item)
+                return item.to_dict()
+            return None
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error updating portfolio: {e}")
+            raise
+        finally:
+            session.close()
+    
+    @classmethod
+    def remove_from_portfolio(cls, db_connection, portfolio_id):
+        """
+        Remove a stock from the portfolio.
+        
+        Args:
+            db_connection: PostgreSQLConnection instance
+            portfolio_id: Portfolio item ID
+            
+        Returns:
+            bool: True if removed, False if not found
+        """
+        session = db_connection.get_session()
+        try:
+            item = session.query(cls).filter(cls.id == portfolio_id).first()
+            if item:
+                session.delete(item)
+                session.commit()
+                return True
+            return False
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error removing from portfolio: {e}")
+            raise
+        finally:
+            session.close()
+    
+    def to_dict(self):
+        """Convert portfolio item to dictionary."""
+        return {
+            'id': self.id,
+            'symbol': self.symbol,
+            'shares': self.shares,
+            'purchase_price': self.purchase_price,
+            'purchase_date': self.purchase_date.isoformat() if self.purchase_date else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+    
+    def __repr__(self):
+        """String representation of the portfolio item."""
+        return f"Portfolio(id={self.id}, symbol='{self.symbol}', shares={self.shares}, purchase_price={self.purchase_price})"

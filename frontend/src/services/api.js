@@ -151,6 +151,29 @@ export const stockAPI = {
     return response.data;
   },
 
+  // Portfolio APIs
+  
+  // Get all stocks in portfolio
+  getPortfolio: async () => {
+    const response = await api.get('/api/portfolio');
+    return response.data;
+  },
+
+  // Add a stock to portfolio
+  addToPortfolio: async (data) => {
+    const response = await api.post('/api/portfolio', data);
+    return response.data;
+  },
+
+  // Update a portfolio item
+  updatePortfolio: async (portfolioId, data) => {
+    const response = await api.put(`/api/portfolio/${portfolioId}`, data);
+    return response.data;
+  },
+
+  // Remove a stock from portfolio
+  removeFromPortfolio: async (portfolioId) => {
+    const response = await api.delete(`/api/portfolio/${portfolioId}`);
   // Update stock monitoring frequency
   updateStockFrequency: async (symbol, frequency) => {
     const response = await api.patch(`/api/stocks/${symbol}/frequency?frequency=${frequency}`);
