@@ -174,6 +174,9 @@ export const stockAPI = {
   // Remove a stock from portfolio
   removeFromPortfolio: async (portfolioId) => {
     const response = await api.delete(`/api/portfolio/${portfolioId}`);
+    return response.data;
+  },
+
   // Update stock monitoring frequency
   updateStockFrequency: async (symbol, frequency) => {
     const response = await api.patch(`/api/stocks/${symbol}/frequency?frequency=${frequency}`);

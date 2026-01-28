@@ -12,42 +12,19 @@ from sqlalchemy import func, text
 from MCP_Servers.yfinance_MCP import get_batch_historical_data
 import pandas as pd
 
-# Configure logging to both file and console
-log_dir = Path("logs")
-log_dir.mkdir(exist_ok=True)
-
-# Create logger
+# Configure logging
+Path("logs").mkdir(exist_ok=True)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.FileHandler(f"logs/market_watcher_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"),
+        logging.StreamHandler()
+    ]
+)
+logging.getLogger().handlers[1].setLevel(logging.INFO)  # Console: INFO, File: DEBUG
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)  # Capture all levels
-
-# Create formatters
-detailed_formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-simple_formatter = logging.Formatter(
-    '%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-
-# File handler - detailed logs (DEBUG level and above)
-file_handler = logging.FileHandler(
-    log_dir / f"market_watcher_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-)
-file_handler.setLevel(logging.DEBUG)
-file_handler.setFormatter(detailed_formatter)
-
-# Console handler - only warnings and errors (WARNING level and above)
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)  # Changed to INFO to see progress
-console_handler.setFormatter(simple_formatter)
-
-# Add handlers to logger
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
-
-# Prevent propagation to root logger
-logger.propagate = False
 
 
 def Monitor_Market(Alert_Threshold: float = 2.0, Alerts_Enabled: bool = False, Frequency: str = "Daily"):
@@ -360,7 +337,9 @@ def Monitor_Market(Alert_Threshold: float = 2.0, Alerts_Enabled: bool = False, F
     
     stocks_processed = 0
     stocks_skipped = 0
-    alerts_generated = 0
+    
+    # Collect all alerts in a list first
+    all_alerts = []
 
     # Process stocks with progress bar
     for stock_symbol in tqdm(stock_symbols, desc="Processing stocks", unit="stock"):
@@ -376,7 +355,6 @@ def Monitor_Market(Alert_Threshold: float = 2.0, Alerts_Enabled: bool = False, F
             continue
         
         stocks_processed += 1
-        Bullish_Alert = False
 
         # Check for Bullish Crossover Alert using StockDataModel methods
         if stock.has_technical_data() and stock.current_price is not None:
@@ -385,15 +363,19 @@ def Monitor_Market(Alert_Threshold: float = 2.0, Alerts_Enabled: bool = False, F
                            f"Current Price: {stock.current_price}\n"
                            f"50-day MA: {stock.ma_50}\n"
                            f"200-day MA: {stock.ma_200}\n")
-                Bullish_Alert = True
-                alerts_generated += 1
-                if Alerts_Enabled:
-                    logger.info("Sending Telegram Alert for Bullish Crossover")
-                    send_telegram_message(message=message)
-                # Save alert to database
-                if db:
-                    db.add_alert(stock.symbol, "Bullish Crossover", message, "Sent")
-                logger.info(message)
+                
+                # Add to alerts list with change percentage
+                change_pct = stock.price_change_percent if stock.price_change_percent is not None else 0.0
+                all_alerts.append({
+                    'symbol': stock.symbol,
+                    'alert_type': 'Bullish Crossover',
+                    'message': message,
+                    'change_percent': abs(change_pct),
+                    'current_price': stock.current_price,
+                    'ma_50': stock.ma_50,
+                    'ma_200': stock.ma_200
+                })
+                logger.debug(f"Added Bullish Crossover alert for {stock.symbol}")
             else:
                 logger.debug(f"No alert for {stock.symbol}. Current Price: {stock.current_price}, 50-day MA: {stock.ma_50}, 200-day MA: {stock.ma_200}")
 
@@ -404,13 +386,17 @@ def Monitor_Market(Alert_Threshold: float = 2.0, Alerts_Enabled: bool = False, F
                        f"Previous Close: {stock.previous_close:.1f}\n"
                        f"Current Price: {stock.current_price:.1f}\n"
                        f"Price Change: {stock.price_change_percent:.1f}%\n")
-            alerts_generated += 1
-            if Alerts_Enabled:
-                logger.info("Sending Telegram Alert for Price Change")
-                send_telegram_message(message=message)
-            # Save alert to database
-            db.add_alert(stock.symbol, "Price Change", message, "Sent")
-            logger.info(message)
+            
+            # Add to alerts list
+            all_alerts.append({
+                'symbol': stock.symbol,
+                'alert_type': 'Price Change',
+                'message': message,
+                'change_percent': abs(stock.price_change_percent),
+                'current_price': stock.current_price,
+                'previous_close': stock.previous_close
+            })
+            logger.debug(f"Added Price Change alert for {stock.symbol}: {stock.price_change_percent:.1f}%")
         else:
             if stock.price_change_percent is not None:
                 logger.debug(f"No significant price change for {stock.symbol}. Change: {stock.price_change_percent:.1f}%")
@@ -426,6 +412,48 @@ def Monitor_Market(Alert_Threshold: float = 2.0, Alerts_Enabled: bool = False, F
             week52_high=stock.week52_high,
             avg_volume=int(stock.average_volume) if stock.average_volume is not None and not math.isnan(stock.average_volume) else None
         )
+    
+    # Process alerts: filter by type, sort by change %, send top 10 per type
+    logger.info("=" * 70)
+    logger.info(f"PROCESSING ALERTS: {len(all_alerts)} total alerts collected")
+    logger.info("=" * 70)
+    
+    alerts_generated = 0
+    
+    if all_alerts:
+        # Convert to DataFrame for easier processing
+        alerts_df = pd.DataFrame(all_alerts)
+        
+        # Get unique alert types
+        alert_types = alerts_df['alert_type'].unique()
+        
+        for alert_type in alert_types:
+            # Filter by alert type
+            type_alerts = alerts_df[alerts_df['alert_type'] == alert_type].copy()
+            
+            # Sort by change_percent descending
+            type_alerts = type_alerts.sort_values('change_percent', ascending=False)
+            
+            # Take top 10
+            top_alerts = type_alerts.head(10)
+            
+            logger.info(f"\n{alert_type}: Sending top {len(top_alerts)} of {len(type_alerts)} alerts")
+            
+            # Send and save top alerts
+            for idx, alert in top_alerts.iterrows():
+                alerts_generated += 1
+                
+                if Alerts_Enabled:
+                    logger.info(f"Sending Telegram Alert for {alert['symbol']}")
+                    send_telegram_message(message=alert['message'])
+                
+                # Save alert to database
+                if db:
+                    db.add_alert(alert['symbol'], alert['alert_type'], alert['message'], "Sent")
+                
+                logger.info(f"Alert {alerts_generated}: {alert['symbol']} - Change: {alert['change_percent']:.1f}%")
+    else:
+        logger.info("No alerts generated in this monitoring cycle")
 
     # Close database connection
     db.close()
@@ -454,7 +482,7 @@ if __name__ == "__main__":
     logger.info(f"Log file: logs/market_watcher_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
     
     # Run market monitoring
-    results = Monitor_Market(Alert_Threshold=3.0, Alerts_Enabled=False, Frequency="Daily")
+    results = Monitor_Market(Alert_Threshold=3.0, Alerts_Enabled=True, Frequency="Daily")
     
     # Display results
     logger.info("=" * 70)
