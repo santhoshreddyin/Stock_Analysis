@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   security-events: write
   packages: write
 
@@ -17,6 +18,7 @@ jobs:
     name: Continuous Integration
     permissions:
       contents: read
+      actions: read
       security-events: write
     uses: ./.github/workflows/ci.yml
 
