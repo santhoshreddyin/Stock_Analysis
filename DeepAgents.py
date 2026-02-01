@@ -210,6 +210,8 @@ async def _open_twitter_session():
         raise RuntimeError(
             "MCP stdio channel broke. The twitter MCP server likely crashed.\n"
             f"Try running it directly to see the real error:\n  {sys.executable} {_TWITTER_MCP_PATH}"
+        ) from e
+
 async def _open_playwright_session():
     if not os.path.exists(_PLAYWRIGHT_MCP_PATH):
         raise FileNotFoundError(f"Playwright MCP not found at: {_PLAYWRIGHT_MCP_PATH}")
