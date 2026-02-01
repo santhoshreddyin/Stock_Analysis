@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, inspect, Column, Integer, String, Float, DateTime, text
+from sqlalchemy import create_engine, inspect, Column, Integer, String, Float, DateTime, text, Index
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 import os
 from typing import List, Optional, Type

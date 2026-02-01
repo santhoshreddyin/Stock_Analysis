@@ -6,7 +6,7 @@ Defines alert types, priorities, and deduplication rules for the queue-based ale
 
 from enum import Enum
 from dataclasses import dataclass
-from typing import Optional, Callable
+from typing import Optional
 from datetime import timedelta
 
 
