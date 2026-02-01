@@ -2,13 +2,15 @@
 Pydantic models for API request/response validation
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 
 class StockListResponse(BaseModel):
     """Response model for stock list"""
+    model_config = ConfigDict(from_attributes=True)
+    
     symbol: str = Field(..., description="Stock ticker symbol")
     name: str = Field(..., description="Company name")
     sector: Optional[str] = Field(None, description="Industry sector")
@@ -16,12 +18,11 @@ class StockListResponse(BaseModel):
     frequency: Optional[str] = Field(None, description="Data update frequency")
     current_price: Optional[float] = Field(None, description="Current stock price")
 
-    class Config:
-        from_attributes = True
-
 
 class StockDetailResponse(BaseModel):
     """Response model for detailed stock information"""
+    model_config = ConfigDict(from_attributes=True)
+    
     symbol: str = Field(..., description="Stock ticker symbol")
     name: str = Field(..., description="Company name")
     sector: Optional[str] = Field(None, description="Industry sector")
@@ -34,11 +35,7 @@ class StockDetailResponse(BaseModel):
     target_high: Optional[float] = Field(None, description="Target price high")
     week52_low: Optional[float] = Field(None, description="52-week low price")
     week52_high: Optional[float] = Field(None, description="52-week high price")
-    average_volume: Optional[int] = Field(None, description="Average 50-day volume")
     last_updated: Optional[datetime] = Field(None, description="Last update timestamp")
-
-    class Config:
-        from_attributes = True
 
 
 class TopStockInfo(BaseModel):
@@ -49,6 +46,8 @@ class TopStockInfo(BaseModel):
 
 class KeyParametersResponse(BaseModel):
     """Response model for key parameters and statistics"""
+    model_config = ConfigDict(from_attributes=True)
+    
     total_stocks: int = Field(..., description="Total number of stocks in database")
     stocks_with_prices: int = Field(..., description="Number of stocks with current price data")
     buy_recommendations: int = Field(..., description="Number of buy recommendations")
@@ -58,12 +57,11 @@ class KeyParametersResponse(BaseModel):
     top_stocks_by_price: List[TopStockInfo] = Field(..., description="Top 5 highest priced stocks")
     last_updated: datetime = Field(..., description="Timestamp of this report")
 
-    class Config:
-        from_attributes = True
-
 
 class StockHistoryResponse(BaseModel):
     """Response model for historical stock data"""
+    model_config = ConfigDict(from_attributes=True)
+    
     date: datetime = Field(..., description="Date of the record")
     open_price: Optional[float] = Field(None, description="Opening price")
     close_price: Optional[float] = Field(None, description="Closing price")
@@ -71,14 +69,13 @@ class StockHistoryResponse(BaseModel):
     low_price: Optional[float] = Field(None, description="Day's low price")
     volume: Optional[int] = Field(None, description="Trading volume")
 
-    class Config:
-        from_attributes = True
-
 
 # News and Graph models
 
 class NewsArticleResponse(BaseModel):
     """Response model for news article"""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     article_id: str
     symbol: str
@@ -92,9 +89,6 @@ class NewsArticleResponse(BaseModel):
     sentiment_score: Optional[float] = None
     relevance_score: Optional[float] = None
     metadata: Optional[Dict[str, Any]] = None
-
-    class Config:
-        from_attributes = True
 
 
 class GraphNodeResponse(BaseModel):
@@ -124,6 +118,8 @@ class GraphDataResponse(BaseModel):
 
 class NewsSummaryResponse(BaseModel):
     """Response model for news summary"""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     symbol: str
     summary_date: datetime
@@ -133,9 +129,6 @@ class NewsSummaryResponse(BaseModel):
     sentiment_trend: Optional[str] = None
     overall_sentiment_score: Optional[float] = None
     article_count: int
-
-    class Config:
-        from_attributes = True
 
 
 class NewsSearchRequest(BaseModel):
@@ -147,16 +140,17 @@ class NewsSearchRequest(BaseModel):
 
 class WatchListResponse(BaseModel):
     """Response model for watchlist item"""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int = Field(..., description="Watchlist item ID")
     symbol: str = Field(..., description="Stock ticker symbol")
     added_at: datetime = Field(..., description="Date and time added to watchlist")
 
-    class Config:
-        from_attributes = True
-
 
 class PortfolioResponse(BaseModel):
     """Response model for portfolio item"""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int = Field(..., description="Portfolio item ID")
     symbol: str = Field(..., description="Stock ticker symbol")
     shares: float = Field(..., description="Number of shares")
@@ -164,6 +158,3 @@ class PortfolioResponse(BaseModel):
     purchase_date: str = Field(..., description="Date of purchase")
     created_at: str = Field(..., description="Date and time added to portfolio")
     updated_at: str = Field(..., description="Date and time last updated")
-
-    class Config:
-        from_attributes = True

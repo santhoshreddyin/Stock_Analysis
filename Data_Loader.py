@@ -32,7 +32,6 @@ class StockPrice(Base):
     Target_High = Column(Float)
     Week52_Low = Column(Float)
     Week52_High = Column(Float)
-    average_50d_volume = Column(Integer)
 
 class Stock_History(Base):
     """Stock historical data table model"""
@@ -287,22 +286,21 @@ class PostgreSQLConnection:
         finally:
             session.close()
     
-    def update_stock_price(self, symbol: str, current_price: float, 
+    def update_stock_price(self, symbol: str, current_price: float = None, 
                           recommendation: str = None, target_low: float = None,
                           target_high: float = None, week52_low: float = None,
-                          week52_high: float = None, avg_volume: int = None) -> bool:
+                          week52_high: float = None) -> bool:
         """
-        Update or insert stock price data
+        Update or insert stock price data. Only updates fields that are explicitly provided.
         
         Args:
             symbol: Stock ticker symbol
-            current_price: Current stock price
-            recommendation: Buy, Hold, or Sell
-            target_low: Target price low
-            target_high: Target price high
-            week52_low: 52-week low
-            week52_high: 52-week high
-            avg_volume: Average 50-day volume
+            current_price: Current stock price (optional)
+            recommendation: Buy, Hold, or Sell (optional)
+            target_low: Target price low (optional)
+            target_high: Target price high (optional)
+            week52_low: 52-week low (optional)
+            week52_high: 52-week high (optional)
             
         Returns:
             bool: True if successful, False otherwise
@@ -315,14 +313,20 @@ class PostgreSQLConnection:
             stock_price = session.query(StockPrice).filter_by(symbol=symbol).first()
             
             if stock_price:
-                stock_price.current_price = current_price
+                # Only update fields that are explicitly provided (not None)
+                if current_price is not None:
+                    stock_price.current_price = current_price
+                if recommendation is not None:
+                    stock_price.Recommendation = recommendation
+                if target_low is not None:
+                    stock_price.Target_Low = target_low
+                if target_high is not None:
+                    stock_price.Target_High = target_high
+                if week52_low is not None:
+                    stock_price.Week52_Low = week52_low
+                if week52_high is not None:
+                    stock_price.Week52_High = week52_high
                 stock_price.Update_Timestamp = datetime.utcnow()
-                stock_price.Recommendation = recommendation
-                stock_price.Target_Low = target_low
-                stock_price.Target_High = target_high
-                stock_price.Week52_Low = week52_low
-                stock_price.Week52_High = week52_high
-                stock_price.average_50d_volume = avg_volume
             else:
                 stock_price = StockPrice(
                     symbol=symbol,
@@ -332,13 +336,11 @@ class PostgreSQLConnection:
                     Target_Low=target_low,
                     Target_High=target_high,
                     Week52_Low=week52_low,
-                    Week52_High=week52_high,
-                    average_50d_volume=avg_volume
+                    Week52_High=week52_high
                 )
                 session.add(stock_price)
             
             session.commit()
-            print(f"✓ Updated stock price for {symbol}: ${current_price}")
             return True
         except Exception as e:
             session.rollback()

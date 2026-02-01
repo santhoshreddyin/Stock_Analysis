@@ -10,6 +10,7 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 import sys
 import os
+import math
 
 # Add parent directory to path to import Data_Loader
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -25,6 +26,15 @@ from api.models import (
 
 # Database connection (initialized on startup)
 db: Optional[PostgreSQLConnection] = None
+
+
+def clean_float(value: Optional[float]) -> Optional[float]:
+    """Convert NaN/Inf float values to None for JSON serialization"""
+    if value is None:
+        return None
+    if math.isnan(value) or math.isinf(value):
+        return None
+    return value
 
 
 @asynccontextmanager
@@ -144,7 +154,9 @@ async def get_stocks(
         if frequency:
             query = query.filter(Stock_List.Frequency == frequency)
         if recommendation:
-            query = query.filter(StockPrice.Recommendation == recommendation)
+            # Normalize: "Strong Buy" -> "strong_buy" to match DB format
+            normalized_rec = recommendation.lower().replace(' ', '_')
+            query = query.filter(StockPrice.Recommendation == normalized_rec)
         if min_price is not None:
             query = query.filter(StockPrice.current_price >= min_price)
         if max_price is not None:
@@ -159,7 +171,7 @@ async def get_stocks(
                 sector=stock.sector,
                 industry=stock.industry,
                 frequency=stock.Frequency,
-                current_price=price.current_price if price else None
+                current_price=clean_float(price.current_price) if price else None
             )
             for stock, price in results
         ]
@@ -196,13 +208,12 @@ async def get_stock_detail(symbol: str):
             industry=stock.industry,
             description=stock.description,
             frequency=stock.Frequency,
-            current_price=price_data.current_price if price_data else None,
+            current_price=clean_float(price_data.current_price) if price_data else None,
             recommendation=price_data.Recommendation if price_data else None,
-            target_low=price_data.Target_Low if price_data else None,
-            target_high=price_data.Target_High if price_data else None,
-            week52_low=price_data.Week52_Low if price_data else None,
-            week52_high=price_data.Week52_High if price_data else None,
-            average_volume=price_data.average_50d_volume if price_data else None,
+            target_low=clean_float(price_data.Target_Low) if price_data else None,
+            target_high=clean_float(price_data.Target_High) if price_data else None,
+            week52_low=clean_float(price_data.Week52_Low) if price_data else None,
+            week52_high=clean_float(price_data.Week52_High) if price_data else None,
             last_updated=price_data.Update_Timestamp if price_data else None
         )
         

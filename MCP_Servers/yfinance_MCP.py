@@ -413,6 +413,83 @@ def get_batch_historical_data(symbols: list[str], period: str = "1mo") -> dict[s
         return {symbol: [] for symbol in symbols}
 
 
+def get_batch_stock_prices(symbols: list[str], include_extended_hours: bool = False) -> dict[str, dict[str, Any]]:
+    """Get current stock prices and info for multiple symbols at once using parallel threads.
+    
+    Uses concurrent.futures to parallelize the API calls for much faster fetching.
+    
+    Args:
+        symbols: List of stock ticker symbols
+        include_extended_hours: Whether to include pre/post market data
+    
+    Returns:
+        Dictionary mapping each symbol to its price data dict containing:
+        - current_price, recommendation, target_low, target_high, week52_low, week52_high
+        - If include_extended_hours=True: pre_market_price, post_market_price
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    def fetch_single_price(symbol: str) -> tuple[str, dict | None]:
+        """Fetch price data for a single symbol"""
+        try:
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+            
+            if not isinstance(info, dict):
+                return symbol, None
+            
+            price_data = {
+                'name': info.get("shortName") or info.get("longName"),
+                'current_price': info.get("currentPrice") or info.get("regularMarketPrice"),
+                'previous_close': info.get("previousClose") or info.get("regularMarketPreviousClose"),
+                'recommendation': info.get("recommendationKey"),
+                'target_low': info.get("targetLowPrice"),
+                'target_high': info.get("targetHighPrice"),
+                'week52_low': info.get("fiftyTwoWeekLow"),
+                'week52_high': info.get("fiftyTwoWeekHigh"),
+                'currency': info.get("financialCurrency") or info.get("currency"),
+            }
+            
+            if include_extended_hours:
+                price_data['pre_market_price'] = info.get("preMarketPrice")
+                price_data['pre_market_change_percent'] = info.get("preMarketChangePercent")
+                price_data['post_market_price'] = info.get("postMarketPrice")
+                price_data['post_market_change_percent'] = info.get("postMarketChangePercent")
+                price_data['market_state'] = info.get("marketState")
+            
+            return symbol, price_data
+            
+        except Exception as e:
+            logger.error(f"Error fetching price for {symbol}: {str(e)}")
+            return symbol, None
+    
+    try:
+        if not symbols:
+            return {}
+        
+        logger.info(f"Batch fetching stock prices for {len(symbols)} symbols")
+        
+        results = {}
+        
+        # Use ThreadPoolExecutor for parallel fetching (max 10 threads to avoid rate limits)
+        max_workers = min(10, len(symbols))
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(fetch_single_price, symbol): symbol for symbol in symbols}
+            
+            for future in as_completed(futures):
+                symbol, price_data = future.result()
+                results[symbol] = price_data
+        
+        successful = len([v for v in results.values() if v is not None])
+        logger.info(f"Batch price fetch completed: {successful}/{len(symbols)} successful")
+        return results
+        
+    except Exception as e:
+        logger.error(f"Error in batch stock price fetch: {str(e)}")
+        return {symbol: None for symbol in symbols}
+
+
 @mcp.tool()
 def search_stocks(query: str, limit: int = 5) -> dict[str, Any]:
     """Search for stocks by company name or keyword."""
