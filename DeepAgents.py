@@ -170,21 +170,20 @@ def _mcp_env() -> dict[str, str]:
     env.setdefault("PYTHONUNBUFFERED", "1")
     return env
 
-client = MultiServerMCPClient(
-    {
-        "yfinance_MCP": {
-            "transport": "stdio",
-            "command": sys.executable,
-            "args": [_YFINANCE_MCP_PATH],
-            "env": _mcp_env(),
-        },
-        "playwright_MCP": {
-            "transport": "stdio",
-            "command": sys.executable,
-            "args": [_PLAYWRIGHT_MCP_PATH],
-            "env": _mcp_env(),
-        },
-    }
+_mcp_servers = {
+    "yfinance_MCP": {
+        "transport": "stdio",
+        "command": sys.executable,
+        "args": [_YFINANCE_MCP_PATH],
+        "env": _mcp_env(),
+    },
+    "playwright_MCP": {
+        "transport": "stdio",
+        "command": sys.executable,
+        "args": [_PLAYWRIGHT_MCP_PATH],
+        "env": _mcp_env(),
+    },
+}
 
 client = MultiServerMCPClient(_mcp_servers)
 
