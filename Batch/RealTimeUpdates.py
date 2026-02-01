@@ -17,7 +17,8 @@ from tqdm import tqdm
 import pandas as pd
 import yfinance as yf
 from Data_Loader import PostgreSQLConnection
-from MCP_Servers.User_Notifications_MCP import send_telegram_message
+from Batch.AlertQueue import AlertQueue
+from AlertTypes import AlertType
 
 # Suppress yfinance logging
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
@@ -50,6 +51,7 @@ class RealTimeUpdater:
     
     def __init__(self, db: PostgreSQLConnection):
         self.db = db
+        self.alert_queue = AlertQueue(db)
         self.price_alerts = []
     
     def run(self, frequency: str = "Daily", batch_size: int = 200, alert_threshold: float = 2.0) -> Dict:
@@ -321,24 +323,33 @@ class RealTimeUpdater:
         return updated
     
     def _send_alerts(self):
-        """Send price alerts via Telegram"""
+        """Enqueue price alerts to queue for async delivery"""
         if not self.price_alerts:
-            logger.info("No alerts to send")
+            logger.info("No alerts to enqueue")
             return
         
-        logger.info("Sending alerts...")
+        logger.info(f"Enqueueing {len(self.price_alerts)} price alerts...")
         
-        # Send price alerts
-        message = "🚨 *Price Alerts*\\n\\n"
-        for alert in self.price_alerts[:10]:  # Top 10
-            direction = "📈" if alert['change_percent'] > 0 else "📉"
-            message += f"{direction} *{alert['symbol']}*: ${alert['current_price']:.2f} ({alert['change_percent']:+.2f}%)\\n"
+        enqueued = 0
+        skipped = 0
         
-        try:
-            send_telegram_message(message)
-            logger.info(f"Sent {len(self.price_alerts)} price alerts")
-        except Exception as e:
-            logger.error(f"Error sending price alerts: {e}")
+        # Enqueue each alert individually (top 10 by magnitude)
+        sorted_alerts = sorted(self.price_alerts, key=lambda x: abs(x['change_percent']), reverse=True)
+        
+        for alert in sorted_alerts[:10]:  # Top 10
+            alert_id = self.alert_queue.enqueue_price_alert(
+                symbol=alert['symbol'],
+                current_price=alert['current_price'],
+                previous_price=alert['previous_close'],
+                change_percent=alert['change_percent']
+            )
+            
+            if alert_id:
+                enqueued += 1
+            else:
+                skipped += 1
+        
+        logger.info(f"Alert queue: {enqueued} enqueued, {skipped} skipped (duplicates)")
 
 
 if __name__ == "__main__":

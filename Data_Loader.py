@@ -52,15 +52,39 @@ class Stock_History(Base):
     )
 
 class Alert_Log(Base):
-    """Alert log table model"""
+    """
+    Alert log table model with queue support
+    
+    Extended schema for queue-based alert processing:
+    - retry_count: Number of send attempts
+    - priority: Alert priority (1=Critical, 2=High, 3=Medium, 4=Low)
+    - scheduled_for: When to attempt sending (for delayed/retry)
+    - error_message: Last error if failed
+    - dedup_hash: Hash for deduplication within time window
+    - sent_status: Pending, Processing, Sent, Failed, DeadLetter
+    """
     __tablename__ = 'Alert_Log'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(15), nullable=False)
-    alert_type = Column(String(100), nullable=False)  # e.g., Bullish Crossover, Price Change
+    alert_type = Column(String(100), nullable=False)  # e.g., price_change, bullish_crossover
     alert_timestamp = Column(DateTime, default=datetime.utcnow)
     message = Column(String(2000))
-    sent_status = Column(String(50))  # e.g., Sent, Failed
+    sent_status = Column(String(50), default='Pending')  # Pending, Processing, Sent, Failed, DeadLetter
+    
+    # Queue-specific fields
+    retry_count = Column(Integer, default=0)
+    priority = Column(Integer, default=3)  # 1=Critical, 2=High, 3=Medium, 4=Low
+    scheduled_for = Column(DateTime, default=datetime.utcnow)  # When to send
+    error_message = Column(String(1000), nullable=True)
+    dedup_hash = Column(String(16), nullable=True, index=True)  # For deduplication
+    
+    # Indexes for queue operations
+    __table_args__ = (
+        Index('idx_alert_queue', 'sent_status', 'scheduled_for', 'priority'),
+        Index('idx_dedup', 'dedup_hash', 'alert_timestamp'),
+        {'schema': None},
+    )
 
 
 class PostgreSQLConnection:

@@ -8,7 +8,8 @@ from typing import Dict, List
 import pandas as pd
 from StockDataModels import StockDataModel
 from Data_Loader import PostgreSQLConnection
-from MCP_Servers.User_Notifications_MCP import send_telegram_message
+from Batch.AlertQueue import AlertQueue
+from AlertTypes import AlertType
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ class AlertMonitor:
     
     def __init__(self, db: PostgreSQLConnection, alert_threshold: float = 2.0):
         self.db = db
+        self.alert_queue = AlertQueue(db)
         self.alert_threshold = alert_threshold
     
     def process_alerts(self, stock_models: Dict[str, StockDataModel], 
@@ -125,35 +127,47 @@ class AlertMonitor:
         return top_alerts
     
     def _send_alerts(self, alerts: List[Dict], send_enabled: bool) -> int:
-        """Send alerts via Telegram and save to database"""
+        """Enqueue alerts to queue for async delivery and save to database"""
         if not alerts:
-            logger.info("No alerts to send")
+            logger.info("No alerts to enqueue")
             return 0
         
-        logger.info(f"Sending {len(alerts)} alerts (Telegram: {send_enabled})")
+        logger.info(f"Enqueueing {len(alerts)} alerts (send_enabled: {send_enabled})")
         
-        sent_count = 0
+        enqueued = 0
         
         for alert in alerts:
             try:
-                # Send via Telegram if enabled
+                # Determine alert type
+                alert_type = AlertType.BULLISH_CROSSOVER if alert['alert_type'] == 'Bullish Crossover' else AlertType.PRICE_CHANGE
+                
+                # Enqueue alert if sending enabled
                 if send_enabled:
-                    send_telegram_message(message=alert['message'])
-                
-                # Save to database
-                self.db.add_alert(
-                    symbol=alert['symbol'],
-                    alert_type=alert['alert_type'],
-                    message=alert['message'],
-                    sent_status="Sent" if send_enabled else "Not Sent"
-                )
-                
-                logger.info(f"Alert: {alert['symbol']} ({alert['alert_type']}) - "
-                          f"Change: {alert['change_percent']:.1f}%")
-                
-                sent_count += 1
+                    # Format message for Telegram
+                    direction = "📈" if alert.get('change_percent', 0) > 0 else "📉"
+                    message = (
+                        f"{direction} *{alert['symbol']}* - {alert['alert_type']}\n"
+                        f"Current: ${alert['current_price']:.2f}\n"
+                        f"Change: {alert['change_percent']:+.2f}%"
+                    )
+                    
+                    alert_id = self.alert_queue.enqueue_alert(
+                        symbol=alert['symbol'],
+                        alert_type=alert_type,
+                        message=message,
+                        context=str(alert.get('change_percent', 0))
+                    )
+                    
+                    if alert_id:
+                        enqueued += 1
+                        logger.info(f"Alert enqueued: {alert['symbol']} ({alert['alert_type']}) - "
+                                  f"Change: {alert['change_percent']:.1f}%")
+                    else:
+                        logger.debug(f"Alert skipped (duplicate): {alert['symbol']}")
+                else:
+                    logger.debug(f"Alert not sent (send_enabled=False): {alert['symbol']}")
                 
             except Exception as e:
-                logger.error(f"Error sending alert for {alert['symbol']}: {e}")
+                logger.error(f"Error enqueueing alert for {alert['symbol']}: {e}")
         
-        return sent_count
+        return enqueued
