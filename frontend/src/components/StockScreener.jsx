@@ -111,16 +111,6 @@ const StockScreener = () => {
       fetchIndustries();
     }
   }, [filters.sector, fetchIndustries]);
-      updatePriceRangeFromStocks(data);
-      
-      setError(null);
-    } catch (err) {
-      setError('Failed to load stocks: ' + err.message);
-      console.error('Error fetching stocks:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleFilterChange = (field, value) => {
     setFilters((prev) => {

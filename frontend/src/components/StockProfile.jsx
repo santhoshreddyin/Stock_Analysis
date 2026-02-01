@@ -148,26 +148,6 @@ const StockProfile = () => {
       fetchStockHistory();
     }
   }, [historyPeriod, symbol, historyLoaded, fetchStockHistory]);
-      const limit = periodLimits[historyPeriod];
-      const data = await stockAPI.getStockHistory(symbol, limit);
-      // Reverse to show latest on right
-      setHistory(data.reverse());
-      setHistoryLoaded(true);
-    } catch (err) {
-      console.error('Error fetching stock history:', err);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
-
-  const fetchNotes = async () => {
-    try {
-      const data = await stockAPI.getNotes(symbol);
-      setNotes(data);
-    } catch (err) {
-      console.error('Error fetching notes:', err);
-    }
-  };
 
   const handleAddNote = async () => {
     if (!noteText.trim()) return;
@@ -213,15 +193,6 @@ const StockProfile = () => {
   const cancelEditing = () => {
     setEditingNoteId(null);
     setEditNoteText('');
-  };
-
-  const checkWatchListStatus = async () => {
-    try {
-      const result = await stockAPI.checkWatchList(symbol);
-      setInWatchList(result.in_watchlist);
-    } catch (err) {
-      console.error('Error checking watchlist status:', err);
-    }
   };
 
   const toggleWatchList = async () => {
