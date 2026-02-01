@@ -34,8 +34,7 @@ on:
 
 env:
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-  IMAGE_NAME_BACKEND: ${{ secrets.DOCKERHUB_USERNAME }}/stock-backend
-  IMAGE_NAME_FRONTEND: ${{ secrets.DOCKERHUB_USERNAME }}/stock-frontend
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/stock_analysis
 
 jobs:
   build-and-push-images:
@@ -61,14 +60,14 @@ jobs:
       id: meta-backend
       uses: docker/metadata-action@v5
       with:
-        images: ${{ env.IMAGE_NAME_BACKEND }}
+        images: ${{ env.IMAGE_NAME }}
         tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable={{is_default_branch}}
+          type=ref,event=branch,prefix=backend-
+          type=ref,event=pr,prefix=backend-
+          type=semver,pattern={{version}},prefix=backend-
+          type=semver,pattern={{major}}.{{minor}},prefix=backend-
+          type=sha,prefix=backend-{{branch}}-
+          type=raw,value=backend-latest,enable={{is_default_branch}}
 
     - name: Build and push Backend image
       id: build-backend
@@ -85,7 +84,7 @@ jobs:
     - name: Run Trivy vulnerability scanner on Backend image
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: ${{ env.IMAGE_NAME_BACKEND }}:latest
+        image-ref: ${{ env.IMAGE_NAME }}:backend-latest
         format: 'sarif'
         output: 'trivy-backend-results.sarif'
 
@@ -101,14 +100,14 @@ jobs:
       id: meta-frontend
       uses: docker/metadata-action@v5
       with:
-        images: ${{ env.IMAGE_NAME_FRONTEND }}
+        images: ${{ env.IMAGE_NAME }}
         tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable={{is_default_branch}}
+          type=ref,event=branch,prefix=frontend-
+          type=ref,event=pr,prefix=frontend-
+          type=semver,pattern={{version}},prefix=frontend-
+          type=semver,pattern={{major}}.{{minor}},prefix=frontend-
+          type=sha,prefix=frontend-{{branch}}-
+          type=raw,value=frontend-latest,enable={{is_default_branch}}
 
     - name: Build and push Frontend image
       id: build-frontend
@@ -125,7 +124,7 @@ jobs:
     - name: Run Trivy vulnerability scanner on Frontend image
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: ${{ env.IMAGE_NAME_FRONTEND }}:latest
+        image-ref: ${{ env.IMAGE_NAME }}:frontend-latest
         format: 'sarif'
         output: 'trivy-frontend-results.sarif'
 
@@ -138,8 +137,8 @@ jobs:
         category: 'frontend-image'
 
     outputs:
-      backend-image: ${{ env.IMAGE_NAME_BACKEND }}:latest
-      frontend-image: ${{ env.IMAGE_NAME_FRONTEND }}:latest
+      backend-image: ${{ env.IMAGE_NAME }}:backend-latest
+      frontend-image: ${{ env.IMAGE_NAME }}:frontend-latest
 
   deploy-to-kubernetes:
     name: Deploy to Kubernetes

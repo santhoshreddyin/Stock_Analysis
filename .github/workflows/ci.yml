@@ -150,11 +150,11 @@ jobs:
       id: meta-backend
       uses: docker/metadata-action@v5
       with:
-        images: ${{ secrets.DOCKERHUB_USERNAME }}/stock-backend
+        images: ${{ secrets.DOCKERHUB_USERNAME }}/stock_analysis
         tags: |
-          type=ref,event=branch
-          type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable={{is_default_branch}}
+          type=ref,event=branch,prefix=backend-
+          type=sha,prefix=backend-{{branch}}-
+          type=raw,value=backend-latest,enable={{is_default_branch}}
 
     - name: Build and push backend image
       uses: docker/build-push-action@v5
@@ -171,11 +171,11 @@ jobs:
       id: meta-frontend
       uses: docker/metadata-action@v5
       with:
-        images: ${{ secrets.DOCKERHUB_USERNAME }}/stock-frontend
+        images: ${{ secrets.DOCKERHUB_USERNAME }}/stock_analysis
         tags: |
-          type=ref,event=branch
-          type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable={{is_default_branch}}
+          type=ref,event=branch,prefix=frontend-
+          type=sha,prefix=frontend-{{branch}}-
+          type=raw,value=frontend-latest,enable={{is_default_branch}}
 
     - name: Build and push frontend image
       uses: docker/build-push-action@v5
