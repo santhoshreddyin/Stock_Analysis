@@ -3,7 +3,7 @@
  * Displays entity relationships in a force-directed graph
  */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 import { stockAPI } from '../services/api';
 import './GraphView.css';
@@ -15,11 +15,7 @@ const GraphView = ({ symbol = null }) => {
   const [selectedNode, setSelectedNode] = useState(null);
   const graphRef = useRef();
 
-  useEffect(() => {
-    fetchGraphData();
-  }, [symbol]);
-
-  const fetchGraphData = async () => {
+  const fetchGraphData = useCallback(async () => {
     try {
       setLoading(true);
       const data = await stockAPI.getGraphData(symbol);
@@ -52,7 +48,11 @@ const GraphView = ({ symbol = null }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [symbol]);
+
+  useEffect(() => {
+    fetchGraphData();
+  }, [fetchGraphData]);
 
   const getNodeColor = (node) => {
     const colors = {

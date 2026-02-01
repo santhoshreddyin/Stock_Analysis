@@ -3,7 +3,7 @@
  * Displays detailed information for a selected stock
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { stockAPI } from '../services/api';
 import './StockDetail.css';
 
@@ -13,14 +13,7 @@ const StockDetail = ({ symbol, onBack }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    if (symbol) {
-      fetchStockDetail();
-      fetchStockHistory();
-    }
-  }, [symbol]);
-
-  const fetchStockDetail = async () => {
+  const fetchStockDetail = useCallback(async () => {
     try {
       setLoading(true);
       const data = await stockAPI.getStockDetail(symbol);
@@ -32,16 +25,23 @@ const StockDetail = ({ symbol, onBack }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [symbol]);
 
-  const fetchStockHistory = async () => {
+  const fetchStockHistory = useCallback(async () => {
     try {
       const data = await stockAPI.getStockHistory(symbol, 30);
       setHistory(data);
     } catch (err) {
       console.error('Error fetching stock history:', err);
     }
-  };
+  }, [symbol]);
+
+  useEffect(() => {
+    if (symbol) {
+      fetchStockDetail();
+      fetchStockHistory();
+    }
+  }, [symbol, fetchStockDetail, fetchStockHistory]);
 
   if (loading) {
     return <div className="loading">Loading stock details...</div>;

@@ -177,6 +177,12 @@ _mcp_servers = {
         "args": [_YFINANCE_MCP_PATH],
         "env": _mcp_env(),
     },
+    "twitter_MCP": {
+        "transport": "stdio",
+        "command": sys.executable,
+        "args": [_TWITTER_MCP_PATH],
+        "env": _mcp_env(),
+    },
     "playwright_MCP": {
         "transport": "stdio",
         "command": sys.executable,

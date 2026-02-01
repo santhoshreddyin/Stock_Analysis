@@ -3,7 +3,7 @@
  * Displays news articles and summaries for a stock
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { stockAPI } from '../services/api';
 import './NewsSummary.css';
 
@@ -14,13 +14,7 @@ const NewsSummary = ({ symbol }) => {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('articles');
 
-  useEffect(() => {
-    if (symbol) {
-      fetchNewsData();
-    }
-  }, [symbol]);
-
-  const fetchNewsData = async () => {
+  const fetchNewsData = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -39,7 +33,13 @@ const NewsSummary = ({ symbol }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [symbol]);
+
+  useEffect(() => {
+    if (symbol) {
+      fetchNewsData();
+    }
+  }, [symbol, fetchNewsData]);
 
   const getSentimentColor = (score) => {
     if (score == null) return '#6b7280';

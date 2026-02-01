@@ -3,7 +3,7 @@
  * Displays a list of stocks with filtering options
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { stockAPI } from '../services/api';
 import './StockList.css';
 
@@ -18,25 +18,16 @@ const StockList = ({ onSelectStock }) => {
     limit: 100,
   });
 
-  useEffect(() => {
-    fetchSectors();
-    fetchStocks();
-  }, []);
-
-  useEffect(() => {
-    fetchStocks();
-  }, [filters]);
-
-  const fetchSectors = async () => {
+  const fetchSectors = useCallback(async () => {
     try {
       const data = await stockAPI.getSectors();
       setSectors(data.sectors || []);
     } catch (err) {
       console.error('Error fetching sectors:', err);
     }
-  };
+  }, []);
 
-  const fetchStocks = async () => {
+  const fetchStocks = useCallback(async () => {
     try {
       setLoading(true);
       const params = {};
@@ -53,7 +44,16 @@ const StockList = ({ onSelectStock }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
+
+  useEffect(() => {
+    fetchSectors();
+    fetchStocks();
+  }, [fetchSectors, fetchStocks]);
+
+  useEffect(() => {
+    fetchStocks();
+  }, [fetchStocks]);
 
   const handleFilterChange = (field, value) => {
     setFilters((prev) => ({

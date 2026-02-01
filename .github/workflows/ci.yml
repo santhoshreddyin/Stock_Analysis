@@ -150,7 +150,7 @@ jobs:
       id: meta-backend
       uses: docker/metadata-action@v5
       with:
-        images: ${{ secrets.DOCKERHUB_USERNAME }}/stock-analysis-backend
+        images: ${{ secrets.DOCKERHUB_USERNAME }}/stock-backend
         tags: |
           type=ref,event=branch
           type=sha,prefix={{branch}}-
@@ -171,7 +171,7 @@ jobs:
       id: meta-frontend
       uses: docker/metadata-action@v5
       with:
-        images: ${{ secrets.DOCKERHUB_USERNAME }}/stock-analysis-frontend
+        images: ${{ secrets.DOCKERHUB_USERNAME }}/stock-frontend
         tags: |
           type=ref,event=branch
           type=sha,prefix={{branch}}-

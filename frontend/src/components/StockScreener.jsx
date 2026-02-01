@@ -3,7 +3,7 @@
  * Screen and filter stocks with advanced options
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { stockAPI } from '../services/api';
 import './StockScreener.css';
@@ -26,51 +26,7 @@ const StockScreener = () => {
     limit: 100,
   });
 
-  useEffect(() => {
-    fetchSectors();
-    fetchIndustries();
-    fetchStocks();
-  }, []);
-
-  useEffect(() => {
-    fetchStocks();
-  }, [filters.sector, filters.industry, filters.frequency, filters.recommendation, filters.limit]);
-
-  useEffect(() => {
-    // Only fetch when price filters change by user
-    if (filters.minPrice >= priceRange.min && filters.maxPrice <= priceRange.max) {
-      fetchStocks();
-    }
-  }, [filters.minPrice, filters.maxPrice]);
-
-  useEffect(() => {
-    // Fetch industries when sector changes
-    if (filters.sector) {
-      fetchIndustries(filters.sector);
-    } else {
-      fetchIndustries();
-    }
-  }, [filters.sector]);
-
-  const fetchSectors = async () => {
-    try {
-      const data = await stockAPI.getSectors();
-      setSectors(data.sectors || []);
-    } catch (err) {
-      console.error('Error fetching sectors:', err);
-    }
-  };
-
-  const fetchIndustries = async (sector = null) => {
-    try {
-      const data = await stockAPI.getIndustries(sector);
-      setIndustries(data.industries || []);
-    } catch (err) {
-      console.error('Error fetching industries:', err);
-    }
-  };
-
-  const updatePriceRangeFromStocks = (stocksList) => {
+  const updatePriceRangeFromStocks = useCallback((stocksList) => {
     const prices = stocksList
       .map(s => s.current_price)
       .filter(p => p != null && p > 0);
@@ -82,9 +38,27 @@ const StockScreener = () => {
     } else {
       setPriceRange({ min: 0, max: 1000 });
     }
-  };
+  }, []);
 
-  const fetchStocks = async () => {
+  const fetchSectors = useCallback(async () => {
+    try {
+      const data = await stockAPI.getSectors();
+      setSectors(data.sectors || []);
+    } catch (err) {
+      console.error('Error fetching sectors:', err);
+    }
+  }, []);
+
+  const fetchIndustries = useCallback(async (sector = null) => {
+    try {
+      const data = await stockAPI.getIndustries(sector);
+      setIndustries(data.industries || []);
+    } catch (err) {
+      console.error('Error fetching industries:', err);
+    }
+  }, []);
+
+  const fetchStocks = useCallback(async () => {
     try {
       setLoading(true);
       const params = {};
@@ -98,6 +72,45 @@ const StockScreener = () => {
 
       const data = await stockAPI.getStocks(params);
       setStocks(data);
+      updatePriceRangeFromStocks(data);
+      if (data.length === 0) {
+        setError("No stocks found matching criteria");
+      } else {
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Error fetching filtered stocks:', err);
+      setError('Failed to fetch stocks');
+    } finally {
+      setLoading(false);
+    }
+  }, [filters, priceRange.min, priceRange.max, updatePriceRangeFromStocks]);
+
+  useEffect(() => {
+    fetchSectors();
+    fetchIndustries();
+    fetchStocks();
+  }, [fetchSectors, fetchIndustries, fetchStocks]);
+
+  useEffect(() => {
+    fetchStocks();
+  }, [fetchStocks]);
+
+  useEffect(() => {
+    // Only fetch when price filters change by user
+    if (filters.minPrice >= priceRange.min && filters.maxPrice <= priceRange.max) {
+      fetchStocks();
+    }
+  }, [filters.minPrice, filters.maxPrice, fetchStocks, priceRange.min, priceRange.max]);
+
+  useEffect(() => {
+    // Fetch industries when sector changes
+    if (filters.sector) {
+      fetchIndustries(filters.sector);
+    } else {
+      fetchIndustries();
+    }
+  }, [filters.sector, fetchIndustries]);
       updatePriceRangeFromStocks(data);
       
       setError(null);
