@@ -1,8 +1,26 @@
 name: CD - Continuous Deployment
 
 on:
-  push:
-    branches: [ main ]
+  workflow_call:
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+      KUBE_CONFIG:
+        required: false
+      POSTGRES_PASSWORD:
+        required: false
+      OPENAI_API_KEY:
+        required: false
+      TAVILY_API_KEY:
+        required: false
+      GMAIL_SMTP_USER:
+        required: false
+      GMAIL_APP_PASSWORD:
+        required: false
+      TWITTER_BEARER_TOKEN:
+        required: false
   workflow_dispatch:
     inputs:
       environment:
