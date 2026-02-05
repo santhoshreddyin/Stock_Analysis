@@ -3,11 +3,19 @@
  * Detailed view of a specific stock
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { stockAPI } from '../services/api';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Brush, ReferenceArea } from 'recharts';
 import './StockProfile.css';
+
+const PERIOD_LIMITS = {
+  '30d': 30,
+  '90d': 90,
+  '1yr': 365,
+  '3yr': 1095,
+  '5yr': 1825
+};
 
 const StockProfile = () => {
   const { symbol } = useParams();
@@ -37,14 +45,11 @@ const StockProfile = () => {
   const [frequency, setFrequency] = useState('');
   const [updatingFrequency, setUpdatingFrequency] = useState(false);
 
+  // Moved constant outside or useMemo, but here I'll use a constant defined outside the component to avoid re-renders
+  // For now, I'll remove it from here and define it outside if possible, or just wrap in useMemo.
+  // Actually, I'll just hardcode it or move it out.
+  // Better to move it outside the component definition.
 
-  const periodLimits = {
-    '30d': 30,
-    '90d': 90,
-    '1yr': 365,
-    '3yr': 1095,
-    '5yr': 1825
-  };
 
   // Sampling rates for different periods
   const getSamplingRate = (period) => {
@@ -107,8 +112,8 @@ const StockProfile = () => {
       setLoadingHistory(true);
       // Implementation continues... logic for history fetching
       // Note: This function was truncated in read_file, but logic is assumed standard API call
-      // using periodLimits[historyPeriod]
-      const limit = periodLimits[historyPeriod] || 365;
+      // using PERIOD_LIMITS[historyPeriod]
+      const limit = PERIOD_LIMITS[historyPeriod] || 365;
       const data = await stockAPI.getStockHistory(symbol, limit);
       
       const formattedHistory = data.history.map(item => ({
@@ -131,7 +136,7 @@ const StockProfile = () => {
     } finally {
       setLoadingHistory(false);
     }
-  }, [symbol, historyPeriod, periodLimits]); 
+  }, [symbol, historyPeriod]); 
 
   // Effects
   useEffect(() => {
