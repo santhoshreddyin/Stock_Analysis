@@ -16,9 +16,11 @@ from typing import Dict, List, Tuple
 from tqdm import tqdm
 import pandas as pd
 import yfinance as yf
-from Data_Loader import PostgreSQLConnection
+from Data_Loader import PostgreSQLConnection, Stock_History
 from Batch.AlertQueue import AlertQueue
 from AlertTypes import AlertType
+from StockDataModels import StockDataModel
+from datetime import datetime, timedelta
 
 # Suppress yfinance logging
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
@@ -109,6 +111,43 @@ class RealTimeUpdater:
         logger.info(f"{'='*15}")
         
         return result
+
+    def fetch_and_update(self, symbols: List[str], batch_size: int = 200, alert_threshold: float = 2.0) -> Dict:
+        """
+        Fetch current prices, update DB, enqueue alerts, and build StockDataModel instances.
+
+        Args:
+            symbols: List of stock symbols
+            batch_size: Number of stocks to process per batch
+            alert_threshold: Minimum price change % to trigger alert
+
+        Returns:
+            Dictionary with update stats and stock models for alert processing
+        """
+        # Get latest history records from DB
+        latest_history = self._get_latest_history(symbols)
+
+        # Fetch current prices from yfinance
+        current_prices = self._fetch_current_prices(symbols, batch_size)
+
+        # Compare and generate alerts
+        updates = self._compare_and_alert(latest_history, current_prices, alert_threshold)
+
+        # Update database
+        updated_count = self._update_database(updates)
+
+        # Send alerts
+        self._send_alerts()
+
+        # Build StockDataModel instances for alert processing
+        stock_models = self._build_stock_models(symbols, current_prices)
+
+        return {
+            'stocks_updated': updated_count,
+            'price_alerts': len(self.price_alerts),
+            'stock_models': stock_models,
+            'total_stocks': len(symbols)
+        }
     
     def _get_latest_history(self, symbols: List[str]) -> Dict[str, Dict]:
         """
@@ -350,6 +389,92 @@ class RealTimeUpdater:
                 skipped += 1
         
         logger.info(f"Alert queue: {enqueued} enqueued, {skipped} skipped (duplicates)")
+
+    def _build_stock_models(self, symbols: List[str], current_prices: Dict[str, Dict], period: str = "200d") -> Dict[str, StockDataModel]:
+        """Build StockDataModel instances using DB-cached history and current prices."""
+        stock_models: Dict[str, StockDataModel] = {}
+
+        def _period_to_days(value: str) -> int:
+            if value.endswith("d"):
+                return int(value[:-1])
+            if value.endswith("mo"):
+                return int(value[:-2]) * 30
+            if value.endswith("y"):
+                return int(value[:-1]) * 365
+            return 200
+
+        cutoff_date = datetime.now().date() - timedelta(days=_period_to_days(period))
+
+        session = self.db.get_session()
+        if not session:
+            logger.error("No active database session")
+            return {symbol: StockDataModel(symbol, fetch_data=False) for symbol in symbols}
+
+        try:
+            history_by_symbol: Dict[str, List[Dict]] = {symbol: [] for symbol in symbols}
+
+            chunk_size = 500
+            for i in range(0, len(symbols), chunk_size):
+                chunk = symbols[i:i + chunk_size]
+                records = (
+                    session.query(Stock_History)
+                    .filter(Stock_History.symbol.in_(chunk))
+                    .filter(Stock_History.date >= cutoff_date)
+                    .order_by(Stock_History.symbol, Stock_History.date)
+                    .all()
+                )
+
+                for record in records:
+                    history_by_symbol[record.symbol].append({
+                        'date': record.date.strftime("%Y-%m-%d"),
+                        'close': float(record.close_price) if record.close_price is not None else None,
+                        'volume': int(record.volume) if record.volume is not None else None
+                    })
+
+            for symbol in tqdm(symbols, desc="Building models"):
+                stock = StockDataModel(symbol, fetch_data=False)
+                try:
+                    history = history_by_symbol.get(symbol, [])
+                    history_df = pd.DataFrame(history) if history else pd.DataFrame()
+
+                    if not history_df.empty:
+                        history_df['close'] = pd.to_numeric(history_df.get('close'), errors='coerce')
+                        history_df['volume'] = pd.to_numeric(history_df.get('volume'), errors='coerce')
+
+                        history_df['50_MA'] = history_df['close'].rolling(window=50).mean()
+                        history_df['200_MA'] = history_df['close'].rolling(window=200).mean()
+
+                        stock.history_df = history_df
+                        stock.ma_50 = history_df['50_MA'].iloc[-1] if len(history_df) >= 50 else None
+                        stock.ma_200 = history_df['200_MA'].iloc[-1] if len(history_df) >= 200 else None
+                        stock.average_volume = history_df['volume'].rolling(window=50).mean().iloc[-1]
+
+                        current_price = current_prices.get(symbol, {}).get('current_price')
+                        if current_price is None and len(history_df) > 0:
+                            current_price = history_df['close'].iloc[-1]
+
+                        stock.current_price = float(current_price) if current_price is not None else None
+
+                        if len(history_df) >= 2:
+                            stock.previous_close = float(history_df['close'].iloc[-2]) if history_df['close'].iloc[-2] is not None else None
+                            if stock.previous_close and stock.current_price is not None:
+                                stock.price_change_percent = ((stock.current_price - stock.previous_close) / stock.previous_close) * 100
+
+                        stock.last_updated = datetime.now()
+                        stock.data_fetch_success = True
+                    else:
+                        stock.data_fetch_success = False
+
+                except Exception as e:
+                    logger.error(f"Error building model for {symbol}: {e}")
+                    stock.data_fetch_success = False
+
+                stock_models[symbol] = stock
+
+        finally:
+            session.close()
+
+        return stock_models
 
 
 if __name__ == "__main__":

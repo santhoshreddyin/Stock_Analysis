@@ -6,6 +6,14 @@ Handles: Full workflow from DB connection to alert generation
 import logging
 import time
 from datetime import datetime
+from pathlib import Path
+import sys
+
+# Ensure project root is on sys.path when running as a script
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from Data_Loader import PostgreSQLConnection
 from Batch.HistoryFetcher import HistoryFetcher
 from Batch.RealTimeUpdates import RealTimeUpdater

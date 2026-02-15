@@ -25,6 +25,7 @@ const StockScreener = () => {
     maxPrice: 1000,
     limit: 100,
   });
+  const [priceFilterTouched, setPriceFilterTouched] = useState(false);
 
   const updatePriceRangeFromStocks = useCallback((stocksList) => {
     const prices = stocksList
@@ -66,8 +67,10 @@ const StockScreener = () => {
       if (filters.industry) params.industry = filters.industry;
       if (filters.frequency) params.frequency = filters.frequency;
       if (filters.recommendation) params.recommendation = filters.recommendation;
-      if (filters.minPrice > priceRange.min) params.min_price = filters.minPrice;
-      if (filters.maxPrice < priceRange.max) params.max_price = filters.maxPrice;
+      if (priceFilterTouched) {
+        params.min_price = filters.minPrice;
+        params.max_price = filters.maxPrice;
+      }
       params.limit = filters.limit;
 
       const data = await stockAPI.getStocks(params);
@@ -84,24 +87,16 @@ const StockScreener = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, priceRange.min, priceRange.max, updatePriceRangeFromStocks]);
+  }, [filters, priceFilterTouched, updatePriceRangeFromStocks]);
 
   useEffect(() => {
     fetchSectors();
     fetchIndustries();
-    fetchStocks();
-  }, [fetchSectors, fetchIndustries, fetchStocks]);
+  }, [fetchSectors, fetchIndustries]);
 
   useEffect(() => {
     fetchStocks();
   }, [fetchStocks]);
-
-  useEffect(() => {
-    // Only fetch when price filters change by user
-    if (filters.minPrice >= priceRange.min && filters.maxPrice <= priceRange.max) {
-      fetchStocks();
-    }
-  }, [filters.minPrice, filters.maxPrice, fetchStocks, priceRange.min, priceRange.max]);
 
   useEffect(() => {
     // Fetch industries when sector changes
@@ -121,12 +116,14 @@ const StockScreener = () => {
         newFilters.industry = '';
         newFilters.minPrice = priceRange.min;
         newFilters.maxPrice = priceRange.max;
+        setPriceFilterTouched(false);
       }
       
       // Reset price when changing industry, frequency, or recommendation
       if (field === 'industry' || field === 'frequency' || field === 'recommendation') {
         newFilters.minPrice = priceRange.min;
         newFilters.maxPrice = priceRange.max;
+        setPriceFilterTouched(false);
       }
       
       return newFilters;
@@ -224,6 +221,7 @@ const StockScreener = () => {
               onChange={(e) => {
                 const value = parseFloat(e.target.value);
                 if (value <= filters.maxPrice) {
+                  setPriceFilterTouched(true);
                   handleFilterChange('minPrice', value);
                 }
               }}
@@ -238,6 +236,7 @@ const StockScreener = () => {
               onChange={(e) => {
                 const value = parseFloat(e.target.value);
                 if (value >= filters.minPrice) {
+                  setPriceFilterTouched(true);
                   handleFilterChange('maxPrice', value);
                 }
               }}
