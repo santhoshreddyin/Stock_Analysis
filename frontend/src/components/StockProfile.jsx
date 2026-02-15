@@ -110,17 +110,17 @@ const StockProfile = () => {
     if (!symbol) return;
     try {
       setLoadingHistory(true);
-      // Implementation continues... logic for history fetching
-      // Note: This function was truncated in read_file, but logic is assumed standard API call
-      // using PERIOD_LIMITS[historyPeriod]
       const limit = PERIOD_LIMITS[historyPeriod] || 365;
       const data = await stockAPI.getStockHistory(symbol, limit);
       
-      const formattedHistory = data.history.map(item => ({
+      // API returns array directly, not {history: [...]}
+      const historyArray = Array.isArray(data) ? data : (data.history || []);
+      
+      const formattedHistory = historyArray.map(item => ({
         ...item,
         date: new Date(item.date).toLocaleDateString(),
         originalDate: item.date
-      })).reverse(); // Re-reverse to chronological order
+      })).reverse(); // Reverse to chronological order
 
       setHistory(formattedHistory);
       setHistoryLoaded(true);

@@ -322,13 +322,14 @@ async def get_key_parameters():
         session.close()
 
 
-@app.get("/api/stocks/{symbol}/history", response_model=List[StockHistoryResponse])
+@app.get("/api/stocks/{symbol}/history")
 async def get_stock_history(
     symbol: str,
     limit: int = Query(30, ge=1, le=2000, description="Number of historical records to return")
 ):
     """
     Get historical price data for a specific stock
+    Returns array of historical records directly
     """
     session = db.get_session()
     if not session:
@@ -346,14 +347,14 @@ async def get_stock_history(
         ).order_by(Stock_History.date.desc()).limit(limit).all()
         
         result = [
-            StockHistoryResponse(
-                date=record.date,
-                open_price=record.open_price,
-                close_price=record.close_price,
-                high_price=record.high_price,
-                low_price=record.low_price,
-                volume=record.volume
-            )
+            {
+                "date": record.date.isoformat(),
+                "open_price": record.open_price,
+                "close_price": record.close_price,
+                "high_price": record.high_price,
+                "low_price": record.low_price,
+                "volume": record.volume
+            }
             for record in history
         ]
         
