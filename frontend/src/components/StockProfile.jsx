@@ -84,7 +84,9 @@ const StockProfile = () => {
     if (!symbol) return;
     try {
       const data = await stockAPI.getNotes(symbol);
-      setNotes(data.notes || []);
+      // API returns array directly, not {notes: [...]}
+      const notesArray = Array.isArray(data) ? data : (data.notes || []);
+      setNotes(notesArray);
     } catch (err) {
       console.error('Error fetching notes:', err);
     }
